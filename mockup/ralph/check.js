@@ -512,6 +512,129 @@ async function noHScroll(page) {
       await hq.evaluate(() => Store.reset());
       await ctx.close();
     }
+    // ---------- 항목 5: 시연 시작 화면과 개인정보 표시 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const bag = { errors: [], external: [] };
+      const page = await ctx.newPage();
+      watch(page, base, bag);
+      await page.goto(base + 'index.html', { waitUntil: 'load' });
+      await page.evaluate(() => Store.reset());
+      await page.reload({ waitUntil: 'load' });
+      const seedCount = await page.evaluate(() => LH_DATA.buildSeed(Date.now()).length);
+
+      // 시작 화면 구성
+      const intro = await page.evaluate(() => ({
+        problem: (document.querySelector('#problem') || {}).innerText || '',
+        steps: document.querySelectorAll('#demo-steps li').length,
+        field: !!document.querySelector('a#open-field[href="field.html"]'),
+        hq: !!document.querySelector('a#open-hq[href="hq.html"]'),
+        compare: (document.querySelector('#compare') || {}).innerText || '',
+        reset: !!document.querySelector('#reset-btn')
+      }));
+      check('[5] 문제 한 줄(엑셀·카톡·메일, 주 1일)', /엑셀/.test(intro.problem) && /카톡/.test(intro.problem) && /메일/.test(intro.problem) && /주 1일/.test(intro.problem), intro.problem);
+      check('[5] 시연 순서 3단계', intro.steps === 3, intro.steps);
+      check('[5] 현장·본부 화면 열기 버튼', intro.field && intro.hq);
+      check('[5] 지금 방식 vs 이 도구 비교(주 1일→매일 30분, 재입력 없음, 카톡 사진 이동 없음)',
+        /주 1일/.test(intro.compare) && /매일 아침 30분/.test(intro.compare) && /재입력 없음/.test(intro.compare) && /카톡 사진 이동 없음/.test(intro.compare), intro.compare);
+      check('[5] 시연 데이터 초기화 버튼', intro.reset);
+
+      // 열린 본부 탭이 있는 상태에서 데이터 바꾼 뒤 초기화
+      const hq = await ctx.newPage();
+      const hbag = { errors: [], external: [] };
+      watch(hq, base, hbag);
+      await hq.goto(base + 'hq.html', { waitUntil: 'load' });
+      await page.evaluate(() => {
+        const c = LH_DATA.complexes[2];
+        const a = Store.add({ complexId: c.id, dong: c.dongs[0].dong, ho: c.dongs[0].units[0].ho, text: '초기화 검사', photos: [] });
+        Store.add({ complexId: c.id, dong: c.dongs[0].dong, ho: c.dongs[0].units[1].ho, text: '초기화 검사2', photos: [] });
+        Store.setStatus(Store.list()[5].id, '보수 완료');
+        Store.setMyComplex(c.id);
+        return a.id;
+      });
+      await page.reload({ waitUntil: 'load' });
+      const before = await page.evaluate(() => Store.list().length);
+      await page.click('#reset-btn');
+      await page.waitForTimeout(200);
+      const after = await page.evaluate(() => ({
+        n: Store.list().length, txt: document.querySelector('#seed-count').textContent,
+        msg: document.querySelector('#reset-msg').textContent, mine: Store.getMyComplex(),
+        leftover: Store.list().some((r) => /초기화 검사/.test(r.text))
+      }));
+      check('[5] 초기화 전에는 건수가 늘어 있음', before === seedCount + 2, before + ' vs ' + seedCount);
+      check('[5] 초기화 후 시드 건수로 돌아감', after.n === seedCount && !after.leftover, JSON.stringify(after));
+      check('[5] 초기화 후 화면 건수 표시도 갱신', after.txt.includes(seedCount + '건') && after.msg.length > 0, after.txt + ' / ' + after.msg);
+      await hq.waitForFunction((n) => document.querySelectorAll('#report-rows tr[data-id]').length === n, seedCount, { timeout: 3000 }).catch(() => {});
+      const hqRows = await hq.evaluate(() => ({ rows: document.querySelectorAll('#report-rows tr[data-id]').length, fresh: document.querySelectorAll('#report-rows tr.is-new').length }));
+      check('[5] 열린 본부 화면도 초기화가 바로 반영(강조 없음)', hqRows.rows === seedCount && hqRows.fresh === 0, JSON.stringify(hqRows));
+
+      // 시작 화면 크기별: 가로 스크롤, 버튼 44px, 글씨 16px
+      for (const w of [375, 1280]) {
+        await page.setViewportSize({ width: w, height: 800 });
+        await page.waitForTimeout(100);
+        check(`[5] 시작 화면 가로 스크롤 없음(${w}px)`, await noHScroll(page));
+        const small = await page.evaluate(() => Array.from(document.querySelectorAll('button, a.btn'))
+          .filter((b) => b.offsetParent !== null)
+          .map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim().slice(0, 20), w: r.width, h: r.height }; })
+          .filter((r) => r.w < 44 || r.h < 44));
+        check(`[5] 시작 화면 누를 곳 44px 이상(${w}px)`, small.length === 0, JSON.stringify(small));
+        const smallFont = await page.evaluate(() => Array.from(document.querySelectorAll('body *'))
+          .filter((e) => e.offsetParent !== null && Array.from(e.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim()))
+          .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.textContent.trim().slice(0, 20)));
+        check(`[5] 시작 화면 글씨 16px 이상(${w}px)`, smallFont.length === 0, JSON.stringify(smallFont));
+        await page.screenshot({ path: path.join(SHOTS, `5-index-${w}.png`), fullPage: true });
+      }
+
+      // 세 페이지 모두 개인정보 표시 + 마스킹 안 된 연락처 없음
+      await page.evaluate(() => Store.setMyComplex(LH_DATA.complexes[0].id));
+      const field = await ctx.newPage();
+      const fbag = { errors: [], external: [] };
+      watch(field, base, fbag);
+      await field.setViewportSize({ width: 375, height: 800 });
+      const leakScan = () => {
+        const raws = [];
+        LH_DATA.complexes.forEach((c) => c.dongs.forEach((d) => d.units.forEach((u) => raws.push(u.resident.phone))));
+        const attrs = Array.from(document.querySelectorAll('body *')).map((e) =>
+          Array.from(e.attributes).filter((a) => !/^(src|href)$/.test(a.name)).map((a) => a.value).join(' ')).join(' ');
+        const inputs = Array.from(document.querySelectorAll('input, textarea')).map((e) => e.value).join(' ');
+        const hay = document.body.innerText + ' ' + attrs + ' ' + inputs;
+        const hits = raws.filter((p) => hay.includes(p));
+        const pattern = (hay.match(/01[016789]-?\d{3,4}-?\d{4}/g) || []);
+        const note = document.querySelector('#privacy-note');
+        const noteOk = !!note && note.offsetParent !== null && /가짜 데이터/.test(note.innerText) && /외부로 전송되지 않음/.test(note.innerText);
+        const noteTop = !!note && note.getBoundingClientRect().top <= 1;
+        return { hits, pattern, noteOk, noteTop };
+      };
+      const scans = {};
+      await page.setViewportSize({ width: 1280, height: 800 });
+      scans.index = await page.evaluate(leakScan);
+      await field.goto(base + 'field.html', { waitUntil: 'load' });
+      scans.fieldRegister = await field.evaluate(leakScan);
+      // 동·호수를 고르면 연락처가 자동으로 뜸 → 이때도 마스킹이어야 함
+      const firstDong = await field.$('#view-register [data-dong]');
+      if (firstDong) { await firstDong.click(); const ho = await field.$('#view-register [data-ho]'); if (ho) await ho.click(); }
+      await field.waitForTimeout(100);
+      scans.fieldPicked = await field.evaluate(leakScan);
+      await field.click('#tab-list');
+      await field.waitForTimeout(150);
+      scans.fieldList = await field.evaluate(leakScan);
+      await hq.reload({ waitUntil: 'load' });
+      scans.hq = await hq.evaluate(leakScan);
+      for (const [k, v] of Object.entries(scans)) {
+        check(`[5] ${k}: "가짜 데이터 · 외부로 전송되지 않음" 표시가 맨 위에 있음`, v.noteOk && v.noteTop, JSON.stringify(v));
+        check(`[5] ${k}: 마스킹 안 된 연락처 없음`, v.hits.length === 0 && v.pattern.length === 0, JSON.stringify(v.hits.concat(v.pattern)));
+      }
+      await field.screenshot({ path: path.join(SHOTS, '5-field-list.png'), fullPage: false });
+      await hq.screenshot({ path: path.join(SHOTS, '5-hq.png'), fullPage: false });
+      check('[5] 가로 스크롤 없음(현장 375px·본부 1280px)', (await noHScroll(field)) && (await noHScroll(hq)));
+
+      const errs = bag.errors.concat(hbag.errors, fbag.errors);
+      const ext = bag.external.concat(hbag.external, fbag.external);
+      check('[5] 콘솔 에러 없음', errs.length === 0, errs.join(' | '));
+      check('[5] 외부 요청 없음', ext.length === 0, ext.join(' | '));
+      await page.evaluate(() => Store.reset());
+      await ctx.close();
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {

@@ -28,3 +28,9 @@
 - 갱신: Store.onChange(storage 이벤트)로 render. 처음 그린 뒤 새로 생긴 id는 8초간 `tr.is-new` + "방금 들어옴" 태그 + `#new-toast`. 한꺼번에 6건 넘게 생기면(초기화 등) 강조하지 않음.
 - 멈춤 기준은 현장과 같은 statusAt 기준 7일. 경과일 칸은 접수일(createdAt) 기준 "n일째", 멈춘 건은 아래에 "⚠ n일 멈춤".
 - 함정: storage 이벤트는 다른 탭에서만 옴. 같은 페이지에서 Store를 바꾸면 render()를 직접 불러야 함. 항목 5의 초기화 버튼이 본부 탭에 미치는 영향도 이 경로로 처리됨.
+
+## 반복 5 — 5. 시연 시작 화면과 개인정보 표시 (PASS)
+- index.html: `#problem`(문제 한 줄) → `#demo-steps` 3단계 → `#open-field`/`#open-hq`(target=_blank, 새 탭으로 열어 본부 탭을 띄워 둔 채 시연) → `#compare` 비교표 → `#reset-btn`(확인창 없이 바로 Store.reset, `#reset-msg`에 결과).
+- 세 페이지 맨 위(topbar 위)에 `#privacy-note` "가짜 데이터 · 외부로 전송되지 않음". 480px 이하에선 뒤쪽 "(이 기기 안에만 저장)" 숨김(한 줄 유지). 스타일은 style.css 끝 `.privacy-note`.
+- check.js [5]의 `leakScan`은 innerText·속성값·input 값에서 원본 연락처와 010-xxxx-xxxx 패턴을 찾음. 새 화면이나 title/aria-label에 연락처를 넣으면 걸림.
+- 초기화는 storage 이벤트로 열린 본부 탭에 반영되고, 6건 넘게 바뀌므로 "방금 들어옴" 강조가 안 뜸(검사함). 초기화는 내 단지 기억도 지우므로 현장 화면은 단지 고르기부터 다시 시작함.
