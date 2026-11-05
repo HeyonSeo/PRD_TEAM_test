@@ -7,9 +7,9 @@
 
 | 작업 | 이슈 | 상태 |
 |---|---|---|
-| T1 저장 실패 안내·사진 상한 | [#2](https://github.com/HeyonSeo/PRD_TEAM_test/issues/2) | 등록됨 |
-| T2 경계 조건 테스트 | [#3](https://github.com/HeyonSeo/PRD_TEAM_test/issues/3) | 등록됨 |
-| T3 멈춤 경고 제거 | [#7](https://github.com/HeyonSeo/PRD_TEAM_test/issues/7) | 등록됨(Q1 = 뺀다) |
+| T1 저장 실패 안내·사진 상한 | [#2](https://github.com/HeyonSeo/PRD_TEAM_test/issues/2) | 구현 완료, 리뷰 대기 |
+| T2 경계 조건 테스트 | [#3](https://github.com/HeyonSeo/PRD_TEAM_test/issues/3) | 구현 완료, 리뷰 대기 |
+| T3 멈춤 경고 제거 | [#7](https://github.com/HeyonSeo/PRD_TEAM_test/issues/7) | 구현 완료, 리뷰 대기 |
 | T3′ 경고 유지·시드 조정 | — | 취소(Q1에서 선택되지 않음) |
 | T4 수동 검증 키트 | [#5](https://github.com/HeyonSeo/PRD_TEAM_test/issues/5) | 등록됨 |
 | T5 수동 검증·리허설 | [#6](https://github.com/HeyonSeo/PRD_TEAM_test/issues/6) | 등록됨 |

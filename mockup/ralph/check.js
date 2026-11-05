@@ -925,6 +925,97 @@ async function noHScroll(page) {
       check('[7] 콘솔 에러 없음', bag.errors.length === 0, bag.errors.join(' | '));
       await ctx.close();
     }
+
+    // ---------- #3 [8]: 명세 경계 조건 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 375, height: 800 } });
+      const page = await ctx.newPage();
+      const bag = { errors: [], external: [] };
+      watch(page, base, bag);
+      await page.goto(base + 'index.html');
+      await page.evaluate(() => Store.reset());
+      await page.goto(base + 'field.html');
+      await page.click('#complex-list button >> nth=0');
+      await page.waitForSelector('#view-register:not([hidden])');
+      const cid = await page.evaluate(() => Store.getMyComplex());
+      const png = Buffer.from(await page.evaluate(() => {
+        const c = document.createElement('canvas'); c.width = 200; c.height = 150;
+        c.getContext('2d').fillRect(0, 0, 200, 150);
+        return c.toDataURL('image/png').split(',')[1];
+      }), 'base64');
+
+      // FR-REG-01: 이미지가 아닌 파일은 무시
+      await page.setInputFiles('#photo-input', [{ name: 'memo.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') }]);
+      await page.waitForTimeout(300);
+      check('[8] 이미지가 아닌 파일은 무시', (await page.locator('#thumbs img').count()) === 0 && /아직 고른 사진이 없습니다/.test(await page.textContent('#photo-note')));
+      await page.setInputFiles('#photo-input', [{ name: 'a.png', mimeType: 'image/png', buffer: png }]);
+      await page.waitForFunction(() => document.querySelectorAll('#thumbs img').length === 1, null, { timeout: 5000 });
+
+      // FR-REG-03: 동을 바꾸면 고른 호가 풀림
+      await page.click('#dong-list button >> nth=0');
+      await page.click('#ho-list button >> nth=0');
+      const dongCount = await page.locator('#dong-list button').count();
+      if (dongCount > 1) {
+        await page.click('#dong-list button >> nth=1');
+        check('[8] 동을 바꾸면 고른 호가 풀리고 등록 버튼이 잠김', (await page.locator('#ho-list button.on').count()) === 0 && await page.isHidden('#resident') && await page.isDisabled('#submit-btn'));
+      } else {
+        check('[8] 동을 바꾸면 고른 호가 풀리고 등록 버튼이 잠김', false, '동이 하나뿐인 단지');
+      }
+      await page.click('#ho-list button >> nth=0');
+
+      // FR-REG-05/06: 공백만이면 등록 불가, 60자 제한, 자주 쓰는 말 이어 붙이기
+      await page.fill('#text-input', '    ');
+      check('[8] 한 줄 내용이 공백뿐이면 등록 불가', await page.isDisabled('#submit-btn') && /한 줄 내용/.test(await page.textContent('#missing')));
+      await page.fill('#text-input', '');
+      await page.locator('#text-input').pressSequentially('a'.repeat(70));
+      check('[8] 한 줄 내용은 60자까지만 입력됨', (await page.inputValue('#text-input')).length === 60);
+      await page.fill('#text-input', '');
+      await page.click('#chips button:nth-child(1)');
+      await page.click('#chips button:nth-child(2)');
+      const chipText = await page.inputValue('#text-input');
+      const chips = await page.$$eval('#chips button', (bs) => bs.slice(0, 2).map((b) => b.textContent));
+      check('[8] 자주 쓰는 말 두 번 누르면 쉼표로 이어 붙음', chipText === chips[0] + ', ' + chips[1] && !(await page.isDisabled('#submit-btn')), chipText);
+
+      // FR-LIST-02: 검색 경계
+      await page.click('#tab-list');
+      await page.waitForSelector('#report-list');
+      const mineCount = await page.evaluate((id) => Store.list().filter((r) => r.complexId === id).length, cid);
+      const shown = () => page.locator('#report-list .report').count();
+      await page.fill('#search-input', '동호');
+      check('[8] 검색어에 숫자가 없으면 전체가 나옴', (await shown()) === mineCount);
+      const target = await page.evaluate((id) => Store.list().find((r) => r.complexId === id), cid);
+      await page.fill('#search-input', target.dong + target.ho);
+      const glued = await page.$$eval('#report-list .report', (els) => els.map((e) => e.dataset.id));
+      const gluedOk = await page.evaluate(([ids, q]) => ids.length > 0 && ids.every((id) => { const r = Store.list().find((x) => x.id === id); return (r.dong + r.ho).indexOf(q) >= 0; }), [glued, target.dong + target.ho]);
+      check('[8] 동·호수를 붙여 써도(예: 1011203) 그 세대를 찾음', gluedOk && glued.includes(target.id), target.dong + target.ho);
+      await page.fill('#search-input', '1');
+      check('[8] 짧은 검색어("1")는 넓게 걸림(앞자리 일치 전체)', (await shown()) >= 1 && (await shown()) <= mineCount);
+      check('[8] 콘솔 에러 없음', bag.errors.length === 0, bag.errors.join(' | '));
+
+      // FR-HQ-05: 한 번에 5건까지는 강조, 6건 이상(초기화 등)은 강조 안 함
+      const hqCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const hq = await hqCtx.newPage();
+      await hq.goto(base + 'hq.html');
+      const writer = await hqCtx.newPage();
+      await writer.goto(base + 'index.html');
+      const bulk = (n, tag) => writer.evaluate(([n, tag]) => {
+        const all = JSON.parse(localStorage.getItem(Store.KEY));
+        const c = LH_DATA.complexes[0]; const now = Date.now();
+        for (let i = 0; i < n; i++) {
+          all.unshift({ id: tag + i, complexId: c.id, dong: c.dongs[0].dong, ho: c.dongs[0].units[0].ho, text: tag + ' ' + i, photos: [], status: '접수', createdAt: now, statusAt: now, history: [{ status: '접수', at: now }] });
+        }
+        localStorage.setItem(Store.KEY, JSON.stringify(all)); // 한 번에 써서 storage 이벤트 1번
+      }, [n, tag]);
+      await bulk(5, 'five');
+      await hq.waitForTimeout(400);
+      check('[8] 본부: 한 번에 5건 들어오면 5건 모두 강조', (await hq.locator('#report-rows tr.is-new').count()) === 5 && await hq.isVisible('#new-toast'));
+      await hq.reload();
+      await bulk(6, 'six');
+      await hq.waitForTimeout(400);
+      check('[8] 본부: 한 번에 6건 이상 바뀌면 강조하지 않음', (await hq.locator('#report-rows tr.is-new').count()) === 0 && await hq.isHidden('#new-toast'));
+      await hqCtx.close();
+      await ctx.close();
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {
