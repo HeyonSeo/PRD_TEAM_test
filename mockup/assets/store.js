@@ -5,6 +5,17 @@
   var COMPLEX_KEY = 'lh-defect-my-complex-v1';
   var memory = null; // localStorage를 쓸 수 없을 때 대신 쓰는 임시 저장
 
+  // localStorage를 아예 쓸 수 없는 환경(사생활 보호 모드 등)이면 메모리만 씀.
+  // 쓸 수 있는데 쓰기가 실패하면(용량 초과 등) 저장 실패로 알림.
+  var storageOk = (function () {
+    try {
+      var k = '__lh_probe__';
+      window.localStorage.setItem(k, '1');
+      window.localStorage.removeItem(k);
+      return true;
+    } catch (e) { return false; }
+  })();
+
   function readRaw(key) {
     try { return window.localStorage.getItem(key); } catch (e) { return null; }
   }
@@ -15,9 +26,11 @@
     try { window.localStorage.removeItem(key); } catch (e) { /* 무시 */ }
   }
 
+  // 저장에 성공하면 true. 실패하면 메모리도 바꾸지 않고 false.
   function save(list) {
+    if (storageOk && !writeRaw(KEY, JSON.stringify(list))) return false;
     memory = list;
-    writeRaw(KEY, JSON.stringify(list));
+    return true;
   }
 
   function load() {
@@ -58,7 +71,7 @@
       history: [{ status: '접수', at: now }]
     };
     all.unshift(item);
-    save(all);
+    if (!save(all)) return null; // 저장 실패: 화면에서 알리고 다시 시도하게 함
     return item;
   }
 
@@ -75,7 +88,7 @@
         break;
       }
     }
-    if (found) save(all);
+    if (found && !save(all)) return null;
     return found;
   }
 

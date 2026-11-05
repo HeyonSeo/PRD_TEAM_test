@@ -870,6 +870,61 @@ async function noHScroll(page) {
       check('[6] README: PRD 기능과 화면 대응표', /대응표/.test(readme) && /\|.*현장 등록.*\|/.test(readme) && /\|.*본부 자동 취합.*\|/.test(readme) && /\|.*처리 상태.*\|/.test(readme));
       check('[6] README: 일부러 뺀 것(로그인·서버·사내망)', /일부러 뺀 것/.test(readme) && /로그인/.test(readme) && /서버/.test(readme) && /사내망/.test(readme));
     }
+
+    // ---------- #2 [7]: 저장 실패 안내와 사진 10장 상한 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 375, height: 800 } });
+      const page = await ctx.newPage();
+      const bag = { errors: [], external: [] };
+      watch(page, base, bag);
+      await page.goto(base + 'index.html');
+      await page.evaluate(() => Store.reset());
+      await page.goto(base + 'field.html');
+      await page.click('#complex-list button >> nth=0');
+      await page.waitForSelector('#view-register:not([hidden])');
+      const mk = (w, h, color) => page.evaluate(([w, h, color]) => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, w, h);
+        return c.toDataURL('image/png').split(',')[1];
+      }, [w, h, color]);
+      const png = Buffer.from(await mk(300, 200, '#90a4ae'), 'base64');
+
+      // 사진 11장 → 10장만
+      await page.setInputFiles('#photo-input', Array.from({ length: 11 }, (_, i) => ({ name: i + '.png', mimeType: 'image/png', buffer: png })));
+      await page.waitForFunction(() => document.querySelectorAll('#thumbs img').length > 0 && !/줄이는 중/.test(document.getElementById('photo-note').textContent), null, { timeout: 8000 });
+      const note = await page.textContent('#photo-note');
+      check('[7] 사진 11장 고르면 10장만 남고 안내', (await page.locator('#thumbs img').count()) === 10 && /10장까지/.test(note) && /1장은 빠졌습니다/.test(note), note);
+      await page.setInputFiles('#photo-input', [{ name: 'x.png', mimeType: 'image/png', buffer: png }]);
+      await page.waitForTimeout(300);
+      check('[7] 10장 찬 뒤 더 고르면 늘지 않고 안내', (await page.locator('#thumbs img').count()) === 10 && /10장까지/.test(await page.textContent('#photo-note')));
+      await page.click('#thumbs .thumb-del >> nth=0');
+      check('[7] 한 장 빼면 안내가 사라지고 9장', (await page.locator('#thumbs img').count()) === 9 && !/10장까지/.test(await page.textContent('#photo-note')));
+
+      // 저장 실패 흉내: setItem이 용량 초과 에러를 던지게 함
+      await page.click('#dong-list button >> nth=0');
+      await page.click('#ho-list button >> nth=0');
+      await page.fill('#text-input', '저장 실패 시험');
+      const before = await page.evaluate(() => Store.list().length);
+      await page.evaluate(() => {
+        window.__realSetItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function () { throw new DOMException('full', 'QuotaExceededError'); };
+      });
+      await page.click('#submit-btn');
+      await page.waitForTimeout(200);
+      const miss = await page.textContent('#missing');
+      check('[7] 저장 실패하면 안내가 나오고 완료 화면이 뜨지 않음', /저장하지 못했습니다/.test(miss) && await page.isHidden('#view-done') && await page.isVisible('#view-register'), miss);
+      check('[7] 저장 실패하면 접수 건수가 그대로', (await page.evaluate(() => Store.list().length)) === before);
+      check('[7] 저장 실패해도 입력이 그대로 남음', (await page.locator('#thumbs img').count()) === 9 && (await page.inputValue('#text-input')) === '저장 실패 시험');
+
+      // 다시 쓸 수 있게 되면 같은 입력으로 다시 눌러 저장됨
+      await page.evaluate(() => { Storage.prototype.setItem = window.__realSetItem; });
+      await page.click('#submit-btn');
+      await page.waitForSelector('#view-done:not([hidden])', { timeout: 3000 });
+      const saved = await page.evaluate(() => Store.list()[0]);
+      check('[7] 다시 누르면 저장되고 완료 화면', saved.text === '저장 실패 시험' && saved.photos.length === 9 && (await page.evaluate(() => Store.list().length)) === before + 1);
+      check('[7] 콘솔 에러 없음', bag.errors.length === 0, bag.errors.join(' | '));
+      await ctx.close();
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {

@@ -53,7 +53,7 @@
         <div class="chips" id="chips" aria-label="자주 쓰는 말"></div>
       </div>
 
-      <p class="missing" id="missing"></p>
+      <p class="missing" id="missing" role="status" aria-live="polite"></p>
       <button type="submit" class="btn primary block big" id="submit-btn" disabled>등록하기</button>
     </form>
   </section>
@@ -90,6 +90,7 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var MAX_SIDE = 480;
+  var MAX_PHOTOS = 10; // 한 건에 올릴 수 있는 사진 수(저장 용량 보호)
   var CHIPS = ['물이 샘', '곰팡이', '방충망 찢어짐', '문이 안 닫힘', '전등 안 켜짐', '보일러 고장'];
 
   var state = { complexId: null, photos: [], dong: null, ho: null, startedAt: 0, busy: 0 };
@@ -139,6 +140,7 @@
   // ---------- 등록 화면 ----------
   function openRegister() {
     state.photos = [];
+    state.photoMsg = '';
     state.dong = null;
     state.ho = null;
     state.busy = 0;
@@ -169,6 +171,7 @@
       del.textContent = '×';
       del.addEventListener('click', function () {
         state.photos.splice(i, 1);
+        state.photoMsg = '';
         renderThumbs();
         updateSubmit();
       });
@@ -177,7 +180,8 @@
       box.appendChild(wrap);
     });
     $('photo-note').textContent = state.busy ? '사진을 줄이는 중…' :
-      (state.photos.length ? '사진 ' + state.photos.length + '장' : '아직 고른 사진이 없습니다.');
+      (state.photos.length ? '사진 ' + state.photos.length + '장' : '아직 고른 사진이 없습니다.') +
+      (state.photoMsg ? ' · ' + state.photoMsg : '');
   }
 
   // 긴 변 480px 이하 JPEG로 줄이기
@@ -207,11 +211,18 @@
   $('photo-input').addEventListener('change', function (e) {
     var files = Array.prototype.slice.call(e.target.files || []).filter(function (f) { return /^image\//.test(f.type); });
     if (!files.length) return;
+    var room = MAX_PHOTOS - state.photos.length;
+    state.photoMsg = '';
+    if (files.length > room) {
+      state.photoMsg = '사진은 ' + MAX_PHOTOS + '장까지 올릴 수 있습니다. ' + (files.length - Math.max(0, room)) + '장은 빠졌습니다.';
+      files = files.slice(0, Math.max(0, room));
+    }
+    if (!files.length) { e.target.value = ''; renderThumbs(); return; }
     state.busy++;
     renderThumbs();
     updateSubmit();
     Promise.all(files.map(shrink)).then(function (urls) {
-      urls.forEach(function (u) { if (u) state.photos.push(u); });
+      urls.forEach(function (u) { if (u && state.photos.length < MAX_PHOTOS) state.photos.push(u); });
       state.busy--;
       e.target.value = '';
       renderThumbs();
@@ -320,6 +331,7 @@
     var m = missingParts();
     var ready = !m.length && !state.busy;
     $('submit-btn').disabled = !ready;
+    $('missing').classList.remove('error');
     $('missing').textContent = state.busy ? '사진을 줄이는 중입니다…' :
       (ready ? '준비됐습니다. 등록하기를 누르세요.' : '남은 것: ' + m.join(', '));
   }
@@ -339,6 +351,13 @@
       text: $('text-input').value.trim(),
       photos: state.photos.slice()
     });
+    if (!item) {
+      // 저장 실패: 입력은 그대로 두고 다시 누르게 함(완료 화면을 띄우지 않음)
+      var miss = $('missing');
+      miss.textContent = '저장하지 못했습니다. 사진 수를 줄여 다시 눌러 주세요.';
+      miss.classList.add('error');
+      return;
+    }
     var sec = Math.max(0, Math.round((Date.now() - state.startedAt) / 1000));
     $('done-title').textContent = '등록 완료 · ' + formatElapsed(sec);
     $('done-detail').textContent = item.dong + '동 ' + item.ho + '호 · ' + item.text + ' · 사진 ' + item.photos.length + '장';
