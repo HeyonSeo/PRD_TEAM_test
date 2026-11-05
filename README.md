@@ -13,6 +13,7 @@ PRD 인터뷰에서 시작해 시연용 시안까지 이어지는 과정을 모�
 | [`mockup/README.md`](mockup/README.md) | 시안 여는 방법, 3분 시연 대본, PRD 기능과 화면 대응표 |
 | [`docs/requirements.md`](docs/requirements.md) | 요구사항 명세. 요구사항마다 ID, 사용자 시나리오, 입력·출력, 성공·실패·경계 조건, 접근 권한, 완료 기준 |
 | [`docs/traceability.md`](docs/traceability.md) | 요구사항과 테스트를 잇는 추적표. 검사를 돌릴 때마다 자동으로 다시 만들어짐 |
+| [`docs/work-plan.md`](docs/work-plan.md) | 작업 계획. 범위 점검, 막는 질문과 가정, 의존 순서별 작업(T1~T6), PRD → 이슈 → 검증 대응표 |
 | [`docs/architecture.md`](docs/architecture.md) | 아키텍처 문서. 시안 구조, 데이터 흐름, 데이터 모델, 운영 전환 제안 |
 | [`docs/diagrams/`](docs/diagrams/) | 아키텍처 다이어그램(SVG) 4장 |
 | [`mockup/ralph/`](mockup/ralph/) | 시안을 만든 랄프 루프의 프롬프트, 할 일 목록, 진행 기록, 검사 스크립트 |
@@ -45,3 +46,4 @@ Playwright로 세 화면을 열어 콘솔 에러, 외부 요청, 레이아웃, �
 2. **시안 제작**: 랄프 루프 6번 반복. 반복마다 할 일 하나를 구현하고 검사를 통과해야 커밋했습니다.
 3. **아키텍처 정리**: 시안 구조와 운영 전환 방향을 [`docs/architecture.md`](docs/architecture.md)에 정리했습니다.
 4. **요구사항 명세와 추적**: 요구사항 47개에 ID를 붙이고, 테스트 169개를 요구사항에 연결했습니다. 남은 일(범위 결정 2건, 미충족 1건, 수동 검증 3건)은 [추적표](docs/traceability.md)에 있습니다.
+5. **작업 계획**: 남은 일을 의존 순서대로 작업 6개로 나눴고, 승인된 범위 5개를 이슈 #2~#6으로 등록했습니다. [`docs/work-plan.md`](docs/work-plan.md)
