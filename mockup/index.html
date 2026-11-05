@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>생활 하자 접수 시안</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>임대주택 생활 하자 접수·취합 시안</h1>
+</header>
+<main class="wrap">
+  <section class="card">
+    <h2>시연 시작</h2>
+    <p>현장 화면에서 하자를 등록하고, 본부 화면에서 단지 12곳 접수가 한곳에 모이는 것을 확인합니다.</p>
+    <p>
+      <a class="btn primary" href="field.html" id="open-field">현장 화면 열기</a>
+      <a class="btn" href="hq.html" id="open-hq">본부 화면 열기</a>
+    </p>
+    <p class="muted" id="seed-count"></p>
+  </section>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+  document.getElementById('seed-count').textContent = '현재 시연 데이터: 접수 ' + Store.list().length + '건 · 단지 ' + LH_DATA.complexes.length + '곳';
+</script>
+</body>
+</html>

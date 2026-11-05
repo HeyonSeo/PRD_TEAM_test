@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>현장 하자 등록</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>현장 하자 등록</h1>
+</header>
+<main class="wrap narrow" id="app">
+  <section class="card">
+    <p>관리사무소 과장님이 폰으로 쓰는 화면입니다.</p>
+    <p class="muted" id="field-summary"></p>
+  </section>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+  document.getElementById('field-summary').textContent = '등록된 접수 ' + Store.list().length + '건';
+</script>
+</body>
+</html>

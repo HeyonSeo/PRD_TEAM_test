@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>본부 취합 화면</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>본부 하자 취합 화면</h1>
+</header>
+<main class="wrap" id="app">
+  <section class="card">
+    <p>단지 12곳의 접수가 한 양식으로 모이는 화면입니다.</p>
+    <p class="muted" id="hq-summary"></p>
+  </section>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+  document.getElementById('hq-summary').textContent = '단지 ' + LH_DATA.complexes.length + '곳 · 접수 ' + Store.list().length + '건';
+</script>
+</body>
+</html>

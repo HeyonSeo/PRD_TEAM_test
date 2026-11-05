@@ -1,6 +1,6 @@
 # 할 일 목록 (위에서부터 하나씩)
 
-- [ ] 1. 뼈대와 가짜 데이터
+- [x] 1. 뼈대와 가짜 데이터
   - `mockup/index.html`(시연 시작), `mockup/field.html`(현장·폰), `mockup/hq.html`(본부·PC), 공용 `mockup/assets/data.js`, `mockup/assets/store.js`, `mockup/assets/style.css`
   - 가짜 데이터: 단지 12곳(가상의 이름), 단지마다 동·호수 목록, 세대별 가짜 입주민 이름·연락처(화면에는 마스킹: 김○○, 010-****-1234), 기존 접수 40건 내외(상태·날짜·단지 고르게, 사진은 인라인 SVG 자리표시)
   - store.js: 접수 목록 읽기·추가·상태 변경, 처음 열 때 시드 데이터 넣기, 시드로 되돌리기
