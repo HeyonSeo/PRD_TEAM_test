@@ -83,3 +83,7 @@
 ## 검사 (만든 사람용)
 
 `node mockup/ralph/check.js`로 자동 검사를 돌립니다(Playwright 필요). 처음부터 끝까지 시연 시나리오와 화면 크기별 스크린샷(`mockup/ralph/shots/`)이 포함돼 있습니다.
+
+## 구조 문서
+
+화면 구성, 데이터 흐름, 운영 전환 방향은 [아키텍처 문서](../docs/architecture.md)에 정리돼 있습니다.

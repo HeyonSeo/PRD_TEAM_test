@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" font-family="'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+  </defs>
+  <rect width="960" height="560" fill="#ffffff"/>
+  <text x="32" y="40" font-size="20" font-weight="700" fill="#0f172a">운영 전환 구조 (제안 · 전산 부서 검토용)</text>
+  <text x="32" y="64" font-size="14" fill="#475569">화면은 시안 그대로 두고, store.js 한 파일만 사내 API 호출로 바꾸는 방식</text>
+
+  <!-- clients -->
+  <rect x="32" y="96" width="200" height="88" rx="10" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="132" y="126" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">관리사무소 과장 폰</text>
+  <text x="132" y="150" text-anchor="middle" font-size="12" fill="#334155">field.html (웹, 앱 설치 없음)</text>
+  <text x="132" y="170" text-anchor="middle" font-size="12" fill="#334155">로그인 1회 후 유지</text>
+
+  <rect x="32" y="208" width="200" height="88" rx="10" fill="#dcfce7" stroke="#15803d"/>
+  <text x="132" y="238" text-anchor="middle" font-size="15" font-weight="700" fill="#14532d">본부 담당자 PC</text>
+  <text x="132" y="262" text-anchor="middle" font-size="12" fill="#334155">hq.html</text>
+  <text x="132" y="282" text-anchor="middle" font-size="12" fill="#334155">엑셀 내려받기(추후)</text>
+
+  <!-- internal network boundary -->
+  <rect x="300" y="84" width="628" height="420" rx="14" fill="#f8fafc" stroke="#1e3a8a" stroke-width="2"/>
+  <text x="320" y="112" font-size="15" font-weight="700" fill="#1e3a8a">사내망 (정보보안 심의 대상)</text>
+
+  <line x1="232" y1="140" x2="346" y2="196" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="232" y1="252" x2="346" y2="222" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="132" y="326" text-anchor="middle" font-size="12" fill="#475569">HTTPS · 사내 인증(SSO)</text>
+
+  <rect x="350" y="150" width="220" height="110" rx="10" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+  <text x="460" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">웹·API 서버</text>
+  <g font-size="12" fill="#334155" font-family="ui-monospace,Menlo,Consolas,monospace">
+    <text x="366" y="202">GET   /reports</text>
+    <text x="366" y="220">POST  /reports</text>
+    <text x="366" y="238">PATCH /reports/{id}/status</text>
+  </g>
+
+  <rect x="640" y="130" width="260" height="70" rx="10" fill="#ede9fe" stroke="#6d28d9"/>
+  <text x="770" y="160" text-anchor="middle" font-size="15" font-weight="700" fill="#4c1d95">접수 DB</text>
+  <text x="770" y="182" text-anchor="middle" font-size="12" fill="#334155">접수 · 상태 이력 (시안의 접수 모델)</text>
+
+  <rect x="640" y="220" width="260" height="70" rx="10" fill="#ede9fe" stroke="#6d28d9"/>
+  <text x="770" y="250" text-anchor="middle" font-size="15" font-weight="700" fill="#4c1d95">사진 저장소</text>
+  <text x="770" y="272" text-anchor="middle" font-size="12" fill="#334155">세대 내부 사진 · 보관 기간 지정</text>
+
+  <rect x="640" y="310" width="260" height="70" rx="10" fill="#fef2f2" stroke="#b91c1c"/>
+  <text x="770" y="340" text-anchor="middle" font-size="15" font-weight="700" fill="#991b1b">입주민 정보 (기존 시스템)</text>
+  <text x="770" y="362" text-anchor="middle" font-size="12" fill="#334155">동·호수로 조회만, 복제 저장 안 함</text>
+
+  <line x1="570" y1="185" x2="636" y2="168" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="570" y1="220" x2="636" y2="250" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="530" y1="260" x2="636" y2="340" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="350" y="300" width="220" height="80" rx="10" fill="#fff7ed" stroke="#c2410c"/>
+  <text x="460" y="328" text-anchor="middle" font-size="15" font-weight="700" fill="#9a3412">본부 실시간 갱신</text>
+  <text x="460" y="350" text-anchor="middle" font-size="12" fill="#334155">시안: storage 이벤트</text>
+  <text x="460" y="368" text-anchor="middle" font-size="12" fill="#334155">운영: 주기 조회 또는 SSE</text>
+
+  <rect x="350" y="404" width="550" height="80" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-dasharray="5 4"/>
+  <text x="370" y="430" font-size="14" font-weight="700" fill="#0f172a">교체 지점: assets/store.js</text>
+  <text x="370" y="452" font-size="12" fill="#334155">list → GET · add → POST(사진 업로드 포함) · setStatus → PATCH · onChange → 주기 조회/SSE</text>
+  <text x="370" y="472" font-size="12" fill="#334155">field.html · hq.html · index.html은 Store 인터페이스만 쓰므로 그대로 재사용</text>
+
+  <text x="32" y="540" font-size="12" fill="#475569">검토 필요: 정보보안 심의 절차·기간, 기존 하자 전산과의 관계(통합 또는 별도), 사진 보관 기간, 사내 인증 연동 방식</text>
+</svg>

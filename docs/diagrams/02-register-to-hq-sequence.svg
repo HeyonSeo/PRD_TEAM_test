@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" font-family="'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/></marker>
+  </defs>
+  <rect width="960" height="600" fill="#ffffff"/>
+  <text x="32" y="40" font-size="20" font-weight="700" fill="#0f172a">핵심 시나리오: 현장 등록 한 건이 본부 화면에 모이기까지</text>
+  <text x="32" y="64" font-size="14" fill="#475569">시연에서 보여줄 두 장면(1분 등록 · 12곳 한 화면)을 잇는 흐름</text>
+
+  <!-- lifelines -->
+  <g font-size="15" font-weight="700" text-anchor="middle">
+    <rect x="40" y="88" width="150" height="44" rx="8" fill="#f1f5f9" stroke="#334155"/><text x="115" y="116" fill="#0f172a">관리사무소 과장</text>
+    <rect x="250" y="88" width="150" height="44" rx="8" fill="#dbeafe" stroke="#1d4ed8"/><text x="325" y="116" fill="#1e3a8a">field.html</text>
+    <rect x="460" y="88" width="150" height="44" rx="8" fill="#ffffff" stroke="#334155"/><text x="535" y="116" fill="#0f172a">Store</text>
+    <rect x="620" y="88" width="150" height="44" rx="8" fill="#ede9fe" stroke="#6d28d9"/><text x="695" y="116" fill="#4c1d95">localStorage</text>
+    <rect x="790" y="88" width="150" height="44" rx="8" fill="#dcfce7" stroke="#15803d"/><text x="865" y="116" fill="#14532d">hq.html (열린 탭)</text>
+  </g>
+  <g stroke="#94a3b8" stroke-dasharray="4 4">
+    <line x1="115" y1="132" x2="115" y2="572"/><line x1="325" y1="132" x2="325" y2="572"/>
+    <line x1="535" y1="132" x2="535" y2="572"/><line x1="695" y1="132" x2="695" y2="572"/>
+    <line x1="865" y1="132" x2="865" y2="572"/>
+  </g>
+
+  <!-- timer band -->
+  <rect x="20" y="150" width="590" height="272" rx="10" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="30" y="170" font-size="12" font-weight="700" fill="#c2410c">⏱ 등록 화면을 연 순간부터 경과 시간 측정 (목표 1분 이내)</text>
+
+  <g font-size="13" fill="#0f172a">
+    <line x1="115" y1="194" x2="321" y2="194" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="124" y="188">① 사진 여러 장 한 번에 선택</text>
+    <text x="336" y="198" fill="#475569" font-size="12">canvas로 긴 변 480px JPEG 축소</text>
+
+    <line x1="115" y1="238" x2="321" y2="238" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="124" y="232">② 동 → 호 버튼 선택</text>
+    <line x1="325" y1="256" x2="531" y2="256" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="336" y="250" font-size="12">LH_DATA.findResident()</text>
+    <line x1="535" y1="276" x2="329" y2="276" stroke="#334155" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#a)"/>
+    <text x="336" y="292" font-size="12" fill="#475569">입주민 김○○ · 010-****-1234 자동 표시</text>
+
+    <line x1="115" y1="326" x2="321" y2="326" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="124" y="320">③ 한 줄 내용 (칩 선택 가능)</text>
+
+    <line x1="115" y1="364" x2="321" y2="364" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="124" y="358">④ 등록하기</text>
+    <line x1="325" y1="382" x2="531" y2="382" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="336" y="376" font-size="12">Store.add({complexId,dong,ho,text,photos})</text>
+    <line x1="535" y1="400" x2="691" y2="400" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
+    <text x="546" y="394" font-size="12">setItem</text>
+  </g>
+
+  <g font-size="13" fill="#0f172a">
+    <line x1="325" y1="448" x2="119" y2="448" stroke="#334155" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#a)"/>
+    <text x="128" y="442">"등록 완료 · 00초"</text>
+
+    <line x1="695" y1="470" x2="861" y2="470" stroke="#c2410c" stroke-width="2" marker-end="url(#b)"/>
+    <text x="706" y="464" font-size="12" fill="#c2410c" font-weight="700">storage 이벤트</text>
+    <rect x="790" y="484" width="150" height="76" rx="8" fill="#f0fdf4" stroke="#15803d"/>
+    <text x="865" y="506" text-anchor="middle" font-size="12">Store.onChange → render</text>
+    <text x="865" y="526" text-anchor="middle" font-size="12">새 건 "방금 들어옴" 강조</text>
+    <text x="865" y="546" text-anchor="middle" font-size="12">단지 카드 숫자 갱신</text>
+  </g>
+  <text x="32" y="590" font-size="12" fill="#475569">상태 변경(접수 → 업체 배정 → 보수 완료)도 Store.setStatus → setItem → storage 이벤트로 같은 경로를 탑니다.</text>
+</svg>
