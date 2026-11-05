@@ -5,7 +5,7 @@
 - **전산 부서**: 운영 전환 검토. [운영 전환 구조](#5-운영-전환-구조-제안)부터 보셔도 됩니다.
 - **시안을 고치거나 이어 만드는 사람**: 처음부터 읽어 주세요.
 
-요구사항의 근거는 [PRD](../prd/lh-defect-intake-prd.md)입니다.
+요구사항의 근거는 [PRD](../prd/lh-defect-intake-prd.md)이고, 요구사항 ID별 상세는 [요구사항 명세](requirements.md)에 있습니다.
 
 ## 1. 시안이 이뤄야 하는 것
 
@@ -106,3 +106,5 @@
 ```bash
 node mockup/ralph/check.js
 ```
+
+검사 결과에는 테스트마다 요구사항 ID가 함께 찍히고, [요구사항 추적표](traceability.md)가 다시 만들어집니다. 연결 규칙은 `mockup/ralph/trace.js`에 있습니다.

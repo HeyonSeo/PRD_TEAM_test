@@ -1,6 +1,7 @@
 /* 목업 자동 검사. 실행: node mockup/ralph/check.js
  * Node 내장 http로 mockup/을 서빙하고 Playwright로 검사합니다.
- * 각 반복은 검사를 "추가"만 합니다(기존 검사 삭제 금지). */
+ * 각 반복은 검사를 "추가"만 합니다(기존 검사 삭제 금지).
+ * 새 검사는 mockup/ralph/trace.js에서 docs/requirements.md의 요구사항 ID에 연결해야 합니다. */
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -32,10 +33,103 @@ function serve() {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
+// 요구사항 연결: 테스트 이름 → 요구사항 ID (docs/requirements.md, mockup/ralph/trace.js)
+const TRACE = require('./trace.js');
+const DOCS = path.resolve(ROOT, '..', 'docs');
+function reqsOf(name) {
+  const ids = new Set();
+  for (const [re, list] of TRACE) if (re.test(name)) list.forEach((id) => ids.add(id));
+  return [...ids].sort();
+}
+
 const results = [];
 function check(name, ok, detail) {
-  results.push({ name, ok: !!ok, detail });
-  console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail && !ok ? '  -> ' + detail : ''));
+  const reqs = reqsOf(name);
+  results.push({ name, ok: !!ok, detail, reqs });
+  console.log((ok ? 'PASS ' : 'FAIL ') + name + (reqs.length ? '  {' + reqs.join(', ') + '}' : '') +
+    (detail && !ok ? '  -> ' + detail : ''));
+}
+
+// docs/requirements.md에서 요구사항 ID·제목·상태를 읽음
+function loadRequirements() {
+  const md = fs.readFileSync(path.join(DOCS, 'requirements.md'), 'utf8').split('\n');
+  const reqs = [];
+  let cur = null;
+  for (const line of md) {
+    const h = line.match(/^### ([A-Z]+(?:-[A-Z]+)?-\d{2}) (.+)$/);
+    if (h) { cur = { id: h[1], title: h[2].trim(), status: '' }; reqs.push(cur); continue; }
+    const st = line.match(/^- \*\*상태\*\*: (.+)$/);
+    if (st && cur && !cur.status) cur.status = st[1].trim();
+  }
+  return reqs;
+}
+
+// GitHub 제목 앵커 규칙
+function slug(t) { return t.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s/g, '-'); }
+
+// 추적성 검사 + docs/traceability.md 생성
+function traceability() {
+  const reqs = loadRequirements();
+  const byId = new Map(reqs.map((r) => [r.id, r]));
+  const problems = [];
+  const STATUSES = ['충족', '미충족', '범위 확인', '수동', '범위 밖'];
+  reqs.forEach((r) => { if (!STATUSES.includes(r.status)) problems.push(`${r.id}: 상태 값이 없거나 잘못됨(${r.status || '없음'})`); });
+  TRACE.forEach(([re, list]) => list.forEach((id) => { if (!byId.has(id)) problems.push(`trace.js ${re} → 문서에 없는 ID ${id}`); }));
+  results.filter((t) => !t.reqs.length).forEach((t) => problems.push(`요구사항에 연결되지 않은 테스트: ${t.name}`));
+
+  const tests = new Map(reqs.map((r) => [r.id, []]));
+  results.forEach((t) => t.reqs.forEach((id) => tests.has(id) && tests.get(id).push(t)));
+  reqs.forEach((r) => {
+    const ts = tests.get(r.id);
+    if (r.status === '충족' && !ts.length) problems.push(`${r.id}: 충족인데 연결된 테스트가 없음`);
+    if (r.status === '충족' && ts.some((t) => !t.ok)) problems.push(`${r.id}: 충족인데 실패한 테스트가 있음`);
+  });
+
+  const icon = (r, ts) => {
+    if (r.status === '충족') return ts.length && ts.every((t) => t.ok) ? '✅' : '❌';
+    return { '미충족': '⬜', '범위 확인': '⚠️', '수동': '👤', '범위 밖': '➖' }[r.status] || '?';
+  };
+  const out = [];
+  out.push('# 요구사항 추적표');
+  out.push('');
+  out.push('> 자동 생성 파일입니다. 직접 고치지 마세요. `node mockup/ralph/check.js`를 실행하면 다시 만들어집니다.');
+  out.push('> 요구사항 정의: [requirements.md](requirements.md) · 연결 규칙: [trace.js](../mockup/ralph/trace.js) · 테스트: [check.js](../mockup/ralph/check.js)');
+  out.push('');
+  const passed = results.filter((t) => t.ok).length;
+  out.push(`- 테스트 ${passed}/${results.length} 통과 · 요구사항 ${reqs.length}개 · 추적성 문제 ${problems.length}건`);
+  out.push('- 표시: ✅ 충족·테스트 통과 · ❌ 테스트 없음 또는 실패 · ⚠️ 범위 확인 필요 · ⬜ 미충족 · 👤 수동 검증 · ➖ 범위 밖');
+  out.push('');
+  out.push('## 요약');
+  out.push('');
+  out.push('| ID | 요구사항 | 상태 | 테스트 수 | 판정 |');
+  out.push('|---|---|---|---|---|');
+  reqs.forEach((r) => {
+    const ts = tests.get(r.id);
+    out.push(`| [${r.id}](requirements.md#${slug(r.id + ' ' + r.title)}) | ${r.title} | ${r.status} | ${ts.length} | ${icon(r, ts)} |`);
+  });
+  const open = reqs.filter((r) => ['미충족', '범위 확인', '수동'].includes(r.status));
+  out.push('');
+  out.push('## 남은 일');
+  out.push('');
+  if (!open.length) out.push('없음');
+  open.forEach((r) => out.push(`- ${icon(r, tests.get(r.id))} **${r.id}** ${r.title} (${r.status})`));
+  if (problems.length) {
+    out.push('');
+    out.push('## 추적성 문제');
+    out.push('');
+    problems.forEach((p) => out.push('- ' + p));
+  }
+  out.push('');
+  out.push('## 요구사항별 테스트');
+  reqs.filter((r) => tests.get(r.id).length).forEach((r) => {
+    out.push('');
+    out.push(`### ${r.id} ${r.title}`);
+    out.push('');
+    tests.get(r.id).forEach((t) => out.push(`- ${t.ok ? '✅' : '❌'} ${t.name}`));
+  });
+  out.push('');
+  fs.writeFileSync(path.join(DOCS, 'traceability.md'), out.join('\n'));
+  return problems;
 }
 
 // 페이지마다 콘솔 에러·페이지 에러·외부 요청을 수집
@@ -783,5 +877,8 @@ async function noHScroll(page) {
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} 통과`);
-  process.exit(failed.length ? 1 : 0);
+  const problems = traceability();
+  console.log(problems.length ? `추적성 문제 ${problems.length}건:\n  - ` + problems.join('\n  - ') : '추적성 문제 없음');
+  console.log('추적표: docs/traceability.md');
+  process.exit(failed.length || problems.length ? 1 : 0);
 })();
