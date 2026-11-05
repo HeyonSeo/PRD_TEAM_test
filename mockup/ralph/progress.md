@@ -34,3 +34,10 @@
 - 세 페이지 맨 위(topbar 위)에 `#privacy-note` "가짜 데이터 · 외부로 전송되지 않음". 480px 이하에선 뒤쪽 "(이 기기 안에만 저장)" 숨김(한 줄 유지). 스타일은 style.css 끝 `.privacy-note`.
 - check.js [5]의 `leakScan`은 innerText·속성값·input 값에서 원본 연락처와 010-xxxx-xxxx 패턴을 찾음. 새 화면이나 title/aria-label에 연락처를 넣으면 걸림.
 - 초기화는 storage 이벤트로 열린 본부 탭에 반영되고, 6건 넘게 바뀌므로 "방금 들어옴" 강조가 안 뜸(검사함). 초기화는 내 단지 기억도 지우므로 현장 화면은 단지 고르기부터 다시 시작함.
+
+## 반복 6 — 6. 최종 점검과 시연 리허설 (PASS)
+- check.js [6]: 한 컨텍스트에서 시작 화면 초기화 → `#open-hq`/`#open-field`(새 탭 popup) → 현장 단지 고르기·사진 2장 등록(1분 안) → 본부 새 건 강조·같은 양식 → 현장 목록 검색·업체 배정 → 본부 표·카드 반영 → 사진 크게 보기. 화면마다 `6-*.png` 전체 스크린샷과 `layoutScan`(화면 밖 넘침·overflow 잘림·16px 미만 글씨) 검사.
+- 버그 수정: 시작 화면 `.steps`와 현장 목록의 처리 단계 `.steps` 클래스가 겹쳐 폰 폭에서 단계가 세로로 쌓여 버튼처럼 보였음 → 현장 쪽을 `.status-steps`(한 줄, 밑줄 진행 막대, › 화살표)로 이름 바꿈.
+- 한국어 낱말이 중간에서 끊기던 것(등/록) → style.css 끝에 `body { word-break: keep-all; overflow-wrap: anywhere; }`.
+- `mockup/README.md`: 여는 방법, 시연 전 준비, 3분 대본, PRD 대응표, 일부러 뺀 것. check.js [6]이 README 제목 문구(여는 방법·3분 시연 대본·대응표·일부러 뺀 것)를 검사하니 제목을 바꿀 때 주의.
+- 함정: layoutScan은 `.visually-hidden`·INPUT/SELECT/IMG를 잘림 검사에서 뺌. 모든 항목 완료.

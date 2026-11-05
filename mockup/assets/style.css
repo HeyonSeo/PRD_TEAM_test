@@ -160,13 +160,14 @@ a { color: var(--primary); }
 .report-pics { display: flex; gap: 6px; margin-bottom: 10px; }
 .report-pics img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: #eceff1; }
 .report-done { color: var(--ok); font-weight: 700; margin: 4px 0 0; font-size: 17px; }
-.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 8px; }
-.stp {
-  text-align: center; font-size: 16px; padding: 4px 2px; border-radius: 6px;
-  background: #eceff1; color: var(--muted);
+.status-steps { display: flex; align-items: center; gap: 2px; margin-bottom: 8px; }
+.status-steps .stp {
+  flex: 1 1 0; text-align: center; font-size: 16px; padding: 2px 0; white-space: nowrap;
+  color: var(--muted); border-bottom: 4px solid #dde2e7;
 }
-.stp.past { background: #c8e6c9; color: #1b5e20; }
-.stp.now { background: var(--primary); color: #fff; font-weight: 700; }
+.status-steps .stp-arrow { flex: 0 0 auto; color: #b0b8c0; font-size: 16px; }
+.status-steps .stp.past { color: #1b5e20; border-bottom-color: #81c784; }
+.status-steps .stp.now { color: var(--primary); font-weight: 700; border-bottom-color: var(--primary); }
 .report .empty, .report-list .empty { text-align: center; color: var(--muted); }
 
 /* ---------- 본부 화면(hq.html) ---------- */
@@ -290,3 +291,6 @@ a { color: var(--primary); }
 @media (max-width: 480px) {
   .privacy-note .privacy-more { display: none; }
 }
+
+/* 한국어 낱말 중간에서 줄이 바뀌지 않게(긴 낱말은 넘치기 전에 끊음) */
+body { word-break: keep-all; overflow-wrap: anywhere; }

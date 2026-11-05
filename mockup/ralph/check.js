@@ -635,6 +635,145 @@ async function noHScroll(page) {
       await page.evaluate(() => Store.reset());
       await ctx.close();
     }
+    // ---------- 항목 6: 처음부터 끝까지 시연 시나리오 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const bags = [];
+      const track = (p) => { const b = { errors: [], external: [] }; watch(p, base, b); bags.push(b); return p; };
+      // 넘친 요소(화면 밖으로 삐져나간 글자·버튼)와 작은 글씨 찾기
+      const layoutScan = () => {
+        const vw = document.documentElement.clientWidth;
+        const vis = Array.from(document.querySelectorAll('body *')).filter((e) => e.offsetParent !== null || e.tagName === 'BODY');
+        const outside = vis.filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > vw + 1 || r.left < -1); })
+          .filter((e) => !e.closest('[hidden]')).map((e) => e.tagName + '.' + e.className + ':' + e.textContent.trim().slice(0, 15));
+        const clipped = vis.filter((e) => { const cs = getComputedStyle(e); return /hidden|clip/.test(cs.overflowX) && e.scrollWidth > e.clientWidth + 2 && !/^(IMG|INPUT|SELECT)$/.test(e.tagName) && !e.classList.contains('visually-hidden'); })
+          .map((e) => e.tagName + '.' + e.className + ':' + e.textContent.trim().slice(0, 15));
+        const smallFont = vis.filter((e) => Array.from(e.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim()))
+          .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.textContent.trim().slice(0, 15));
+        return { outside, clipped, smallFont, hscroll: document.documentElement.scrollWidth > window.innerWidth };
+      };
+      const shotAndScan = async (p, name, label) => {
+        await p.screenshot({ path: path.join(SHOTS, `6-${name}.png`), fullPage: true });
+        const s = await p.evaluate(layoutScan);
+        check(`[6] ${label}: 넘침·잘림·가로 스크롤 없음`, !s.hscroll && s.outside.length === 0 && s.clipped.length === 0, JSON.stringify(s));
+        check(`[6] ${label}: 글씨 16px 이상`, s.smallFont.length === 0, JSON.stringify(s.smallFont));
+      };
+
+      // 1) 시작 화면에서 초기화
+      const index = track(await ctx.newPage());
+      await index.goto(base + 'index.html', { waitUntil: 'load' });
+      await index.evaluate(() => { Store.add({ complexId: 'c01', dong: LH_DATA.complexes[0].dongs[0].dong, ho: LH_DATA.complexes[0].dongs[0].units[0].ho, text: '지난 시연 찌꺼기', photos: [] }); Store.setMyComplex('c01'); });
+      await index.reload({ waitUntil: 'load' });
+      await index.click('#reset-btn');
+      const seed = await index.evaluate(() => LH_DATA.buildSeed(Date.now()).length);
+      const afterReset = await index.evaluate(() => ({ n: Store.list().length, mine: Store.getMyComplex() }));
+      check('[6] 1단계 초기화: 시드 건수로, 내 단지 기억도 지워짐', afterReset.n === seed && !afterReset.mine, JSON.stringify(afterReset));
+      await shotAndScan(index, 'index-1280', '시작 화면 1280px');
+
+      // 2) 시작 화면 버튼으로 본부 화면을 새 탭에 열어 둠
+      const [hq] = await Promise.all([ctx.waitForEvent('page'), index.click('#open-hq')]);
+      track(hq);
+      await hq.setViewportSize({ width: 1280, height: 900 });
+      await hq.waitForLoadState('load');
+      await hq.waitForSelector('#complex-cards .cx-card');
+      await hq.evaluate(() => { window.__noReload = true; });
+      check('[6] 본부 화면: 카드 12개, 표에 시드 전체', (await hq.locator('#complex-cards .cx-card').count()) === 12 && (await hq.locator('#report-rows tr[data-id]').count()) === seed);
+      await shotAndScan(hq, 'hq-before', '본부 화면(등록 전) 1280px');
+
+      // 3) 시작 화면 버튼으로 현장 화면을 열고, 폰 폭에서 단지 고르기 → 등록
+      const [field] = await Promise.all([ctx.waitForEvent('page'), index.click('#open-field')]);
+      track(field);
+      await field.setViewportSize({ width: 375, height: 812 });
+      await field.waitForLoadState('load');
+      check('[6] 현장 화면: 처음엔 단지 고르기', await field.isVisible('#view-pick'));
+      await shotAndScan(field, 'field-pick-375', '현장 단지 고르기 375px');
+      const t0 = Date.now();
+      await field.click('#complex-list button[data-complex="c04"]');
+      const cx = await field.evaluate(() => LH_DATA.findComplex('c04'));
+      const mk = (w, h, col) => field.evaluate(([w, h, col]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = col; x.fillRect(0, 0, w, h); return c.toDataURL('image/png').split(',')[1]; }, [w, h, col]);
+      await field.setInputFiles('#photo-input', [
+        { name: '1.png', mimeType: 'image/png', buffer: Buffer.from(await mk(1200, 1600, '#90a4ae'), 'base64') },
+        { name: '2.png', mimeType: 'image/png', buffer: Buffer.from(await mk(1600, 1200, '#a1887f'), 'base64') }
+      ]);
+      await field.waitForFunction(() => document.querySelectorAll('#thumbs img').length === 2);
+      const dong = cx.dongs[0].dong, ho = cx.dongs[0].units[4].ho;
+      await field.click(`#dong-list button[data-dong="${dong}"]`);
+      await field.click(`#ho-list button[data-ho="${ho}"]`);
+      await field.click('#chips button:nth-child(2)');
+      await field.fill('#text-input', '작은방 벽지 곰팡이 (시연)');
+      await shotAndScan(field, 'field-register-375', '현장 등록 화면 375px');
+      await field.click('#submit-btn');
+      await field.waitForSelector('#view-done', { state: 'visible' });
+      const took = (Date.now() - t0) / 1000;
+      const done = (await field.textContent('#done-title')).trim();
+      const m = done.match(/(?:(\d+)분 )?(\d{2})초/);
+      const shownSec = m ? (+(m[1] || 0)) * 60 + +m[2] : 999;
+      check('[6] 현장 등록이 1분 안에 끝나고 완료 화면에 초 표시', took < 60 && shownSec < 60, done + ' / ' + took);
+      await shotAndScan(field, 'field-done-375', '현장 완료 화면 375px');
+      const newId = await field.evaluate(() => Store.list()[0].id);
+
+      // 4) 본부 화면에 새로고침 없이 같은 양식으로 나타남
+      let ok = true;
+      try { await hq.waitForSelector(`#report-rows tr[data-id="${newId}"].is-new`, { timeout: 3000 }); } catch (e) { ok = false; }
+      check('[6] 본부: 새 건이 새로고침 없이 맨 위에 강조되어 나타남', ok && (await hq.evaluate(() => window.__noReload === true)) &&
+        (await hq.$eval('#report-rows tr[data-id]', (t) => t.dataset.id)) === newId);
+      const row = await hq.evaluate((id) => {
+        const tds = document.querySelectorAll(`#report-rows tr[data-id="${id}"] td`);
+        return { cx: tds[0].textContent, unit: tds[1].textContent, text: tds[2].textContent, pics: tds[3].querySelectorAll('img').length, st: tds[4].textContent.trim() };
+      }, newId);
+      check('[6] 본부: 단지·동호수·내용·사진 2장·접수 상태가 같은 양식으로', row.cx.includes(cx.name) && row.unit.includes(dong + '동') && row.unit.includes(ho + '호') && row.text.includes('곰팡이') && row.pics === 2 && row.st === '접수', JSON.stringify(row));
+      check('[6] 본부: 전체 접수 수가 시드+1', (await hq.locator('#report-rows tr[data-id]').count()) === seed + 1);
+      await shotAndScan(hq, 'hq-new', '본부 화면(새 건) 1280px');
+
+      // 5) 현장 목록에서 동·호수로 찾아 상태 변경 → 본부 반영
+      await field.click('#to-list-btn');
+      await field.fill('#search-input', `${dong} ${ho}`);
+      const card = field.locator(`#report-list .report[data-id="${newId}"]`);
+      check('[6] 현장 목록: 방금 등록한 건을 동·호수로 찾음', (await card.count()) === 1);
+      await card.locator('.next-btn').click();
+      await shotAndScan(field, 'field-list-375', '현장 접수 목록 375px');
+      const stepsOk = await card.evaluate((el) => {
+        const s = el.querySelector('.status-steps');
+        if (!s) return false;
+        const items = Array.from(s.querySelectorAll('.stp')).map((x) => x.getBoundingClientRect());
+        return items.length === 3 && items.every((r) => Math.abs(r.top - items[0].top) < 2);
+      });
+      check('[6] 현장 목록: 처리 단계 표시가 한 줄(버튼처럼 쌓이지 않음)', stepsOk);
+      let reflected = true;
+      try {
+        await hq.waitForFunction((id) => { const b = document.querySelector(`#report-rows tr[data-id="${id}"] .badge`); return b && b.textContent.trim() === '업체 배정'; }, newId, { timeout: 3000 });
+      } catch (e) { reflected = false; }
+      const cardCount = await hq.$eval('#complex-cards .cx-card[data-complex="c04"]', (e) => ({ open: +e.querySelector('.n-open strong').textContent }));
+      const expOpen = await hq.evaluate(() => Store.list().filter((r) => r.complexId === 'c04' && r.status !== '보수 완료').length);
+      check('[6] 현장 상태 변경이 본부 표·카드에 바로 반영', reflected && cardCount.open === expOpen, JSON.stringify({ reflected, cardCount, expOpen }));
+      await shotAndScan(hq, 'hq-after', '본부 화면(상태 변경 후) 1280px');
+
+      // 6) 사진 크게 보기도 시연 가능
+      await hq.click(`#report-rows tr[data-id="${newId}"] .pic-btn >> nth=0`);
+      check('[6] 본부: 방금 올라온 사진을 크게 봄', await hq.isVisible('#lightbox'));
+      await hq.screenshot({ path: path.join(SHOTS, '6-hq-lightbox.png') });
+      await hq.keyboard.press('Escape');
+
+      // 시작 화면 375px도 확인
+      await index.setViewportSize({ width: 375, height: 812 });
+      await index.waitForTimeout(100);
+      await shotAndScan(index, 'index-375', '시작 화면 375px');
+
+      const errs = bags.flatMap((b) => b.errors), ext = bags.flatMap((b) => b.external);
+      check('[6] 시나리오 전체 콘솔 에러 없음', errs.length === 0, errs.join(' | '));
+      check('[6] 시나리오 전체 외부 요청 없음', ext.length === 0, ext.join(' | '));
+      await index.evaluate(() => Store.reset());
+      await ctx.close();
+
+      // README: 여는 방법, 3분 대본, 대응표, 일부러 뺀 것
+      const readmePath = path.join(ROOT, 'README.md');
+      const readme = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, 'utf8') : '';
+      check('[6] README.md 있음', readme.length > 0);
+      check('[6] README: 여는 방법', /여는 방법/.test(readme) && /index\.html/.test(readme));
+      check('[6] README: 3분 시연 대본', /3분 시연 대본/.test(readme) && /field\.html|현장 화면/.test(readme) && /hq\.html|본부 화면/.test(readme));
+      check('[6] README: PRD 기능과 화면 대응표', /대응표/.test(readme) && /\|.*현장 등록.*\|/.test(readme) && /\|.*본부 자동 취합.*\|/.test(readme) && /\|.*처리 상태.*\|/.test(readme));
+      check('[6] README: 일부러 뺀 것(로그인·서버·사내망)', /일부러 뺀 것/.test(readme) && /로그인/.test(readme) && /서버/.test(readme) && /사내망/.test(readme));
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {

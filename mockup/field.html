@@ -403,9 +403,15 @@
 
   function stepsEl(status) {
     var ol = document.createElement('div');
-    ol.className = 'steps';
+    ol.className = 'status-steps';
+    ol.setAttribute('aria-label', '처리 단계: ' + status);
     var idx = STATUSES.indexOf(status);
     STATUSES.forEach(function (st, i) {
+      if (i > 0) {
+        var a = document.createElement('span');
+        a.className = 'stp-arrow'; a.setAttribute('aria-hidden', 'true'); a.textContent = '›';
+        ol.appendChild(a);
+      }
       var s = document.createElement('span');
       s.className = 'stp' + (i < idx ? ' past' : '') + (i === idx ? ' now' : '');
       s.textContent = st;
