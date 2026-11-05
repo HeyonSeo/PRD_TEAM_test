@@ -6,20 +6,305 @@
 <title>본부 취합 화면</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
-<body>
+<body class="hq">
 <header class="topbar">
   <h1>본부 하자 취합 화면</h1>
+  <span class="sub" id="updated-at"></span>
 </header>
 <main class="wrap" id="app">
-  <section class="card">
-    <p>단지 12곳의 접수가 한 양식으로 모이는 화면입니다.</p>
-    <p class="muted" id="hq-summary"></p>
+
+  <!-- 한 줄 요약: 취합이 저절로 끝났다는 것 -->
+  <section class="hq-summary" id="auto-summary" aria-live="polite">
+    <span class="hq-summary-mark" aria-hidden="true">✓</span>
+    <div>
+      <strong id="summary-title">이번 주 취합: 자동 완료</strong>
+      <p class="hq-summary-text" id="hq-summary"></p>
+    </div>
+  </section>
+
+  <!-- 새 접수 알림 -->
+  <div class="hq-toast" id="new-toast" role="status" hidden></div>
+
+  <!-- 전체 합계 -->
+  <section class="hq-totals" id="totals" aria-label="전체 합계"></section>
+
+  <!-- 단지 12곳 카드 -->
+  <section aria-labelledby="cards-title">
+    <h2 id="cards-title">단지별 현황 <span class="muted hq-hint">카드를 누르면 아래 표가 그 단지만 보여 줍니다</span></h2>
+    <div class="cx-grid" id="complex-cards"></div>
+  </section>
+
+  <!-- 12곳 접수가 한 양식으로 모인 표 -->
+  <section class="card" aria-labelledby="table-title">
+    <div class="hq-table-head">
+      <h2 id="table-title">전체 접수 <span class="muted" id="table-count"></span></h2>
+      <div class="hq-filters">
+        <label class="hq-filter-label" for="f-complex">단지</label>
+        <select id="f-complex" class="hq-select"></select>
+        <div class="hq-status-filter" id="f-status" role="group" aria-label="상태로 거르기">
+          <button type="button" class="btn choice small on" data-status="전체">전체</button>
+          <button type="button" class="btn choice small" data-status="접수">접수</button>
+          <button type="button" class="btn choice small" data-status="업체 배정">업체 배정</button>
+          <button type="button" class="btn choice small" data-status="보수 완료">보수 완료</button>
+          <button type="button" class="btn choice small" data-status="멈춤">7일 넘게 멈춤</button>
+        </div>
+      </div>
+    </div>
+    <table class="hq-table" id="report-table">
+      <thead>
+        <tr>
+          <th scope="col" class="col-cx">단지</th>
+          <th scope="col" class="col-unit">동·호수</th>
+          <th scope="col">내용</th>
+          <th scope="col" class="col-pics">사진</th>
+          <th scope="col" class="col-st">상태</th>
+          <th scope="col" class="col-date">접수일</th>
+          <th scope="col" class="col-age">경과일</th>
+        </tr>
+      </thead>
+      <tbody id="report-rows"></tbody>
+    </table>
   </section>
 </main>
+
+<!-- 사진 크게 보기 -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="사진 크게 보기" hidden>
+  <div class="lightbox-inner">
+    <img id="lightbox-img" alt="">
+    <p class="lightbox-cap" id="lightbox-cap"></p>
+    <button type="button" class="btn primary" id="lightbox-close">닫기</button>
+  </div>
+</div>
+
 <script src="assets/data.js"></script>
 <script src="assets/store.js"></script>
 <script>
-  document.getElementById('hq-summary').textContent = '단지 ' + LH_DATA.complexes.length + '곳 · 접수 ' + Store.list().length + '건';
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var STALE_DAYS = 7; // 현장 목록과 같은 기준: 상태가 바뀐 지 7일 이상이면 멈춤
+  var NEW_MS = 8000;  // 새 건 강조 시간
+  var filter = { complexId: '', status: '전체' };
+  var known = null;   // 이미 화면에 그린 접수 id
+  var fresh = {};     // id -> 강조 끝나는 시각
+
+  function isStale(r, now) {
+    return r.status !== '보수 완료' && Store.daysSince(r.statusAt, now) >= STALE_DAYS;
+  }
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+  function fmtDate(ts) {
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+  }
+  function fmtTime(ts) {
+    var d = new Date(ts);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function weekStart(now) {
+    var d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    var back = (d.getDay() + 6) % 7; // 월요일 시작
+    return d.getTime() - back * LH_DATA.DAY;
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // 단지 거르기 목록
+  (function fillSelect() {
+    var sel = $('f-complex');
+    sel.appendChild(new Option('단지 12곳 전체', ''));
+    LH_DATA.complexes.forEach(function (c) { sel.appendChild(new Option(c.name, c.id)); });
+    sel.addEventListener('change', function () { filter.complexId = sel.value; render(); });
+  })();
+
+  Array.prototype.forEach.call($('f-status').querySelectorAll('button'), function (b) {
+    b.addEventListener('click', function () { filter.status = b.dataset.status; render(); });
+  });
+
+  function renderSummary(all, now) {
+    var ws = weekStart(now);
+    var week = all.filter(function (r) { return r.createdAt >= ws; });
+    var sent = {};
+    week.forEach(function (r) { sent[r.complexId] = true; });
+    $('hq-summary').textContent = '단지 ' + LH_DATA.complexes.length + '곳 접수가 등록 즉시 이 화면에 모였습니다. ' +
+      '이번 주 새 접수 ' + week.length + '건(' + Object.keys(sent).length + '개 단지). ' +
+      '엑셀 받아서 다시 맞출 일이 없습니다.';
+    $('updated-at').textContent = '마지막 갱신 ' + fmtTime(now);
+  }
+
+  function renderTotals(all, now) {
+    var t = { total: all.length, open: 0, done: 0, stale: 0 };
+    all.forEach(function (r) {
+      if (r.status === '보수 완료') t.done++; else t.open++;
+      if (isStale(r, now)) t.stale++;
+    });
+    var box = $('totals');
+    box.innerHTML = '';
+    [['전체 접수', t.total, ''], ['진행 중', t.open, ''], ['보수 완료', t.done, 'ok'], ['7일 넘게 멈춤', t.stale, t.stale ? 'warn' : '']]
+      .forEach(function (x) {
+        var d = el('div', 'hq-total ' + x[2]);
+        d.appendChild(el('span', 'hq-total-label', x[0]));
+        d.appendChild(el('strong', 'hq-total-num', x[1] + '건'));
+        box.appendChild(d);
+      });
+  }
+
+  function renderCards(all, now) {
+    var box = $('complex-cards');
+    box.innerHTML = '';
+    LH_DATA.complexes.forEach(function (c) {
+      var mine = all.filter(function (r) { return r.complexId === c.id; });
+      var open = mine.filter(function (r) { return r.status !== '보수 완료'; }).length;
+      var stale = mine.filter(function (r) { return isStale(r, now); }).length;
+      var hasNew = mine.some(function (r) { return fresh[r.id]; });
+      var b = el('button', 'cx-card' + (stale ? ' has-stale' : '') + (hasNew ? ' is-new' : '') + (filter.complexId === c.id ? ' on' : ''));
+      b.type = 'button';
+      b.dataset.complex = c.id;
+      b.appendChild(el('span', 'cx-name', c.name));
+      var nums = el('span', 'cx-nums');
+      [['접수', mine.length, 'n-total'], ['진행 중', open, 'n-open'], ['완료', mine.length - open, 'n-done']].forEach(function (x) {
+        var s = el('span', 'cx-num ' + x[2]);
+        s.appendChild(el('strong', null, String(x[1])));
+        s.appendChild(el('span', null, x[0]));
+        nums.appendChild(s);
+      });
+      b.appendChild(nums);
+      var w = el('span', 'cx-warn', stale ? '⚠ 7일 넘게 멈춘 건 ' + stale + '건' : '멈춘 건 없음');
+      if (!stale) w.className = 'cx-ok';
+      b.appendChild(w);
+      b.addEventListener('click', function () {
+        filter.complexId = filter.complexId === c.id ? '' : c.id;
+        $('f-complex').value = filter.complexId;
+        render();
+        $('table-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function renderRows(all, now) {
+    var rows = all.filter(function (r) {
+      if (filter.complexId && r.complexId !== filter.complexId) return false;
+      if (filter.status === '멈춤') return isStale(r, now);
+      if (filter.status !== '전체' && r.status !== filter.status) return false;
+      return true;
+    });
+    Array.prototype.forEach.call($('f-status').querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.dataset.status === filter.status);
+    });
+    $('table-count').textContent = rows.length + '건';
+    var body = $('report-rows');
+    body.innerHTML = '';
+    if (!rows.length) {
+      var tr = el('tr');
+      var td = el('td', 'empty', '조건에 맞는 접수가 없습니다.');
+      td.colSpan = 7;
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
+    }
+    rows.forEach(function (r) {
+      var c = LH_DATA.findComplex(r.complexId);
+      var stale = isStale(r, now);
+      var tr = el('tr', (fresh[r.id] ? 'is-new' : '') + (stale ? ' stale' : ''));
+      tr.dataset.id = r.id;
+      tr.dataset.complex = r.complexId;
+
+      var tdC = el('td', 'col-cx');
+      if (fresh[r.id]) tdC.appendChild(el('span', 'new-tag', '방금 들어옴'));
+      tdC.appendChild(document.createTextNode(c ? c.name : r.complexId));
+      tr.appendChild(tdC);
+      tr.appendChild(el('td', 'col-unit', r.dong + '동 ' + r.ho + '호'));
+      tr.appendChild(el('td', 'col-text', r.text));
+
+      var tdP = el('td', 'col-pics');
+      (r.photos || []).forEach(function (src, i) {
+        var pb = el('button', 'pic-btn');
+        pb.type = 'button';
+        pb.setAttribute('aria-label', '사진 ' + (i + 1) + ' 크게 보기');
+        var img = el('img');
+        img.src = src;
+        img.alt = '';
+        pb.appendChild(img);
+        pb.addEventListener('click', function () {
+          openLightbox(src, (c ? c.name : '') + ' ' + r.dong + '동 ' + r.ho + '호 · ' + r.text + ' (사진 ' + (i + 1) + '/' + r.photos.length + ')');
+        });
+        tdP.appendChild(pb);
+      });
+      if (!r.photos || !r.photos.length) tdP.appendChild(el('span', 'muted', '없음'));
+      tr.appendChild(tdP);
+
+      var tdS = el('td', 'col-st');
+      tdS.appendChild(el('span', 'badge s-' + r.status.replace(/ /g, '-'), r.status));
+      tr.appendChild(tdS);
+      tr.appendChild(el('td', 'col-date', fmtDate(r.createdAt)));
+
+      var age = Store.daysSince(r.createdAt, now);
+      var tdA = el('td', 'col-age');
+      tdA.dataset.days = String(age);
+      if (r.status === '보수 완료') {
+        tdA.appendChild(el('span', 'age-done', '처리 끝'));
+      } else {
+        tdA.appendChild(el('span', null, age === 0 ? '오늘' : age + '일째'));
+        if (stale) tdA.appendChild(el('span', 'age-stale', '⚠ ' + Store.daysSince(r.statusAt, now) + '일 멈춤'));
+      }
+      tr.appendChild(tdA);
+      body.appendChild(tr);
+    });
+  }
+
+  function render() {
+    var now = Date.now();
+    var all = Store.list();
+    // 처음 그린 뒤에 생긴 건은 "방금 들어옴"으로 잠깐 강조
+    if (known) {
+      var added = all.filter(function (r) { return !known[r.id]; });
+      // 초기화처럼 한꺼번에 바뀐 경우는 강조하지 않음
+      if (added.length && added.length <= 5) {
+        added.forEach(function (r) { fresh[r.id] = now + NEW_MS; });
+        showToast(added);
+      }
+    }
+    known = {};
+    all.forEach(function (r) { known[r.id] = true; });
+    Object.keys(fresh).forEach(function (id) { if (fresh[id] <= now) delete fresh[id]; });
+
+    renderSummary(all, now);
+    renderTotals(all, now);
+    renderCards(all, now);
+    renderRows(all, now);
+  }
+
+  var toastTimer = null;
+  function showToast(added) {
+    var c = LH_DATA.findComplex(added[0].complexId);
+    var t = $('new-toast');
+    t.textContent = '새 접수 ' + added.length + '건: ' + (c ? c.name : '') + ' ' + added[0].dong + '동 ' + added[0].ho + '호 · ' + added[0].text;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; render(); }, NEW_MS);
+  }
+
+  // 사진 크게 보기
+  function openLightbox(src, cap) {
+    $('lightbox-img').src = src;
+    $('lightbox-cap').textContent = cap;
+    $('lightbox').hidden = false;
+    $('lightbox-close').focus();
+  }
+  function closeLightbox() { $('lightbox').hidden = true; }
+  $('lightbox-close').addEventListener('click', closeLightbox);
+  $('lightbox').addEventListener('click', function (e) { if (e.target === $('lightbox')) closeLightbox(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeLightbox(); });
+
+  // 현장에서 등록·상태 변경하면 새로고침 없이 갱신
+  Store.onChange(render);
+  render();
+})();
 </script>
 </body>
 </html>

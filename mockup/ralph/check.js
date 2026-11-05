@@ -364,6 +364,154 @@ async function noHScroll(page) {
       await page.evaluate(() => Store.reset());
       await ctx.close();
     }
+    // ---------- 항목 4: 본부 대시보드 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      const hq = await ctx.newPage();
+      const bag = { errors: [], external: [] };
+      watch(hq, base, bag);
+      await hq.goto(base + 'hq.html');
+      await hq.evaluate(() => Store.reset());
+      await hq.reload();
+
+      check('[4] 단지 카드 12개', (await hq.locator('#complex-cards .cx-card').count()) === 12);
+      const cardInfo = await hq.evaluate(() => {
+        const now = Date.now();
+        const all = Store.list();
+        return LH_DATA.complexes.map((c) => {
+          const mine = all.filter((r) => r.complexId === c.id);
+          const exp = {
+            total: mine.length,
+            open: mine.filter((r) => r.status !== '보수 완료').length,
+            done: mine.filter((r) => r.status === '보수 완료').length,
+            stale: mine.filter((r) => r.status !== '보수 완료' && Store.daysSince(r.statusAt, now) >= 7).length
+          };
+          const el = document.querySelector(`#complex-cards .cx-card[data-complex="${c.id}"]`);
+          const got = {
+            total: +el.querySelector('.n-total strong').textContent,
+            open: +el.querySelector('.n-open strong').textContent,
+            done: +el.querySelector('.n-done strong').textContent,
+            warn: !!el.querySelector('.cx-warn'), cls: el.classList.contains('has-stale'),
+            name: el.querySelector('.cx-name').textContent
+          };
+          return { id: c.id, name: c.name, exp, got };
+        });
+      });
+      check('[4] 카드마다 접수·진행 중·완료 건수가 맞음', cardInfo.every((x) => x.got.name === x.name && x.got.total === x.exp.total && x.got.open === x.exp.open && x.got.done === x.exp.done), JSON.stringify(cardInfo));
+      check('[4] 7일 넘게 멈춘 건이 있는 카드만 경고', cardInfo.every((x) => x.got.warn === (x.exp.stale > 0) && x.got.cls === (x.exp.stale > 0)), JSON.stringify(cardInfo));
+      check('[4] 경고 카드가 하나 이상 있음(시연용)', cardInfo.some((x) => x.exp.stale > 0));
+
+      const summary = await hq.textContent('#auto-summary');
+      check('[4] "이번 주 취합: 자동 완료" 한 줄 요약', summary.includes('이번 주 취합: 자동 완료'), summary);
+
+      const total = await hq.evaluate(() => Store.list().length);
+      check('[4] 표에 12곳 접수 전체가 모임', (await hq.locator('#report-rows tr[data-id]').count()) === total);
+      const heads = await hq.$$eval('#report-table thead th', (ths) => ths.map((t) => t.textContent.trim()));
+      check('[4] 표 양식: 단지·동·호수·내용·사진·상태·접수일·경과일', JSON.stringify(heads) === JSON.stringify(['단지', '동·호수', '내용', '사진', '상태', '접수일', '경과일']), JSON.stringify(heads));
+      const rowOk = await hq.evaluate(() => {
+        const r = Store.list()[0];
+        const tr = document.querySelector(`#report-rows tr[data-id="${r.id}"]`);
+        const c = LH_DATA.findComplex(r.complexId);
+        const tds = tr.querySelectorAll('td');
+        return tds[0].textContent.includes(c.name) && tds[1].textContent.includes(r.dong + '동') && tds[1].textContent.includes(r.ho + '호') &&
+          tds[2].textContent === r.text && tds[3].querySelectorAll('img').length === r.photos.length && tds[4].textContent.trim() === r.status;
+      });
+      check('[4] 행 내용이 store와 일치', rowOk);
+      await hq.screenshot({ path: path.join(SHOTS, '4-hq.png'), fullPage: true });
+
+      // 단지·상태로 거르기
+      await hq.selectOption('#f-complex', 'c03');
+      let ids = await hq.$$eval('#report-rows tr[data-id]', (trs) => trs.map((t) => t.dataset.complex));
+      check('[4] 단지로 거르기', ids.length > 0 && ids.every((x) => x === 'c03'), JSON.stringify(ids));
+      await hq.selectOption('#f-complex', '');
+      await hq.click('#f-status button[data-status="보수 완료"]');
+      let sts = await hq.$$eval('#report-rows tr[data-id] .badge', (bs) => bs.map((b) => b.textContent.trim()));
+      check('[4] 상태로 거르기', sts.length > 0 && sts.every((s) => s === '보수 완료'), JSON.stringify(sts));
+      await hq.click('#f-status button[data-status="전체"]');
+      await hq.click('#complex-cards .cx-card[data-complex="c07"]');
+      ids = await hq.$$eval('#report-rows tr[data-id]', (trs) => trs.map((t) => t.dataset.complex));
+      check('[4] 카드 누르면 그 단지만', ids.length > 0 && ids.every((x) => x === 'c07') && (await hq.inputValue('#f-complex')) === 'c07', JSON.stringify(ids));
+      await hq.click('#complex-cards .cx-card[data-complex="c07"]');
+      check('[4] 카드 한 번 더 누르면 전체로', (await hq.locator('#report-rows tr[data-id]').count()) === total);
+
+      // 사진 크게 보기
+      await hq.click('#report-rows tr[data-id] .pic-btn >> nth=0');
+      check('[4] 사진 누르면 크게 보기', await hq.isVisible('#lightbox') && (await hq.getAttribute('#lightbox-img', 'src')).startsWith('data:image/'));
+      const big = await hq.evaluate(() => document.getElementById('lightbox-img').getBoundingClientRect().width);
+      check('[4] 크게 보기 사진 폭 300px 이상', big >= 300, big);
+      await hq.screenshot({ path: path.join(SHOTS, '4-hq-lightbox.png') });
+      await hq.click('#lightbox-close');
+      check('[4] 닫기 누르면 닫힘', !(await hq.isVisible('#lightbox')));
+
+      // 현장 탭에서 등록 → 열려 있던 본부 탭에 새로고침 없이 나타남
+      await hq.evaluate(() => { window.__noReload = true; });
+      const field = await ctx.newPage();
+      const fbag = { errors: [], external: [] };
+      watch(field, base, fbag);
+      await field.setViewportSize({ width: 375, height: 812 });
+      await field.goto(base + 'field.html');
+      await field.evaluate(() => Store.setMyComplex('c09'));
+      await field.reload();
+      const png = await field.evaluate(() => {
+        const c = document.createElement('canvas'); c.width = 800; c.height = 600;
+        const x = c.getContext('2d'); x.fillStyle = '#795548'; x.fillRect(0, 0, 800, 600);
+        return c.toDataURL('image/png').split(',')[1];
+      });
+      await field.setInputFiles('#photo-input', [{ name: 'p.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') }]);
+      await field.waitForFunction(() => document.querySelectorAll('#thumbs img').length === 1);
+      const fc = await field.evaluate(() => LH_DATA.findComplex('c09'));
+      const fdong = fc.dongs[0].dong, fho = fc.dongs[0].units[3].ho;
+      await field.click(`#dong-list button[data-dong="${fdong}"]`);
+      await field.click(`#ho-list button[data-ho="${fho}"]`);
+      await field.fill('#text-input', '본부 반영 검사 베란다 결로');
+      await field.click('#submit-btn');
+      await field.waitForSelector('#view-done', { state: 'visible' });
+      const newId = await field.evaluate(() => Store.list()[0].id);
+
+      await hq.bringToFront();
+      let appeared = true;
+      try {
+        await hq.waitForSelector(`#report-rows tr[data-id="${newId}"]`, { timeout: 3000 });
+      } catch (e) { appeared = false; }
+      check('[4] 현장 등록 건이 본부에 새로고침 없이 나타남', appeared && (await hq.evaluate(() => window.__noReload === true)));
+      check('[4] 새 건은 표 맨 위', (await hq.$eval('#report-rows tr[data-id]', (t) => t.dataset.id)) === newId);
+      check('[4] 새 건 강조 표시', await hq.evaluate((id) => document.querySelector(`#report-rows tr[data-id="${id}"]`).classList.contains('is-new'), newId) &&
+        (await hq.textContent(`#report-rows tr[data-id="${newId}"]`)).includes('방금 들어옴'));
+      check('[4] 새 건 알림 문구', await hq.isVisible('#new-toast') && (await hq.textContent('#new-toast')).includes('물푸레 행복주택'));
+      const c09 = await hq.$eval('#complex-cards .cx-card[data-complex="c09"]', (e) => ({ total: +e.querySelector('.n-total strong').textContent, isNew: e.classList.contains('is-new') }));
+      const c09exp = await hq.evaluate(() => Store.list().filter((r) => r.complexId === 'c09').length);
+      check('[4] 단지 카드 건수도 바로 갱신', c09.total === c09exp && c09.isNew, JSON.stringify({ c09, c09exp }));
+      await hq.screenshot({ path: path.join(SHOTS, '4-hq-new.png'), fullPage: true });
+
+      // 현장에서 상태 변경도 본부에 반영
+      await field.evaluate((id) => Store.setStatus(id, '업체 배정'), newId);
+      await hq.waitForFunction((id) => { const b = document.querySelector(`#report-rows tr[data-id="${id}"] .badge`); return b && b.textContent.trim() === '업체 배정'; }, newId, { timeout: 3000 }).catch(() => {});
+      check('[4] 현장 상태 변경이 본부에 반영', (await hq.textContent(`#report-rows tr[data-id="${newId}"] .badge`)).trim() === '업체 배정');
+
+      // 1280px 가로 스크롤 없음, 버튼 44px, 글씨 16px
+      check('[4] 본부 화면 가로 스크롤 없음(1280px)', await noHScroll(hq));
+      const small = await hq.evaluate(() => Array.from(document.querySelectorAll('main button, main select'))
+        .filter((b) => b.offsetParent !== null)
+        .map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim().slice(0, 20), w: r.width, h: r.height }; })
+        .filter((r) => r.w < 44 || r.h < 44));
+      check('[4] 본부 화면 누를 곳 모두 44px 이상', small.length === 0, JSON.stringify(small));
+      const smallFont = await hq.evaluate(() => Array.from(document.querySelectorAll('body *'))
+        .filter((e) => e.offsetParent !== null && Array.from(e.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim()))
+        .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.textContent.trim().slice(0, 20)));
+      check('[4] 본부 화면 글씨 16px 이상', smallFont.length === 0, JSON.stringify(smallFont));
+      const leak = await hq.evaluate(() => {
+        const txt = document.body.innerText;
+        const raws = [];
+        LH_DATA.complexes.forEach((c) => c.dongs.forEach((d) => d.units.forEach((u) => raws.push(u.resident.phone))));
+        return raws.filter((p) => txt.includes(p));
+      });
+      check('[4] 본부 화면에 마스킹 안 된 연락처 없음', leak.length === 0, JSON.stringify(leak));
+
+      check('[4] 본부 화면 콘솔 에러 없음', bag.errors.length === 0 && fbag.errors.length === 0, bag.errors.concat(fbag.errors).join(' | '));
+      check('[4] 본부 화면 외부 요청 없음', bag.external.length === 0 && fbag.external.length === 0, bag.external.concat(fbag.external).join(' | '));
+      await hq.evaluate(() => Store.reset());
+      await ctx.close();
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {

@@ -21,3 +21,10 @@
 - 목록: 우리 단지 건만 최근 순, `#search-input`(숫자 둘이면 앞=동·뒤=호 앞자리 일치, 하나면 동 또는 호), `#status-filter button[data-filter]`로 상태 거르기. 각 건 `.report[data-id]`에 배지·3단계 표시·"n일째"(statusAt 기준, `.report-meta[data-days]`)·마스킹 연락처·사진 썸네일.
 - `.next-btn`(data-next) 한 번에 Store.setStatus로 다음 상태. 보수 완료면 버튼 없이 "처리 끝". 7일 이상 멈춘 진행 중 건은 `.report-meta.stale`(빨간 글씨) — 본부 카드 경고(항목 4)도 같은 기준(statusAt 기준 7일)을 쓰면 일관됨.
 - Store.onChange로 다른 탭 변경 시 목록 다시 그림. 함정: 호수 "101"(1층 1호)과 동 "101"이 같아서 숫자 하나 검색은 둘 다 걸림(의도된 동작).
+
+## 반복 4 — 4. 본부 대시보드 (PASS)
+- hq.html: `#auto-summary`("이번 주 취합: 자동 완료" + 이번 주 새 접수 수), `#totals`(전체·진행 중·완료·7일 넘게 멈춤), `#complex-cards .cx-card[data-complex]` 12개(`.n-total/.n-open/.n-done strong`, 멈춘 건 있으면 `.has-stale` + `.cx-warn`), 표 `#report-rows tr[data-id][data-complex]`.
+- 거르기: `#f-complex` select, `#f-status button[data-status]`(전체/접수/업체 배정/보수 완료/멈춤). 카드를 누르면 그 단지로 거르고 한 번 더 누르면 해제. 사진 `.pic-btn` → `#lightbox`(닫기 `#lightbox-close`, Esc).
+- 갱신: Store.onChange(storage 이벤트)로 render. 처음 그린 뒤 새로 생긴 id는 8초간 `tr.is-new` + "방금 들어옴" 태그 + `#new-toast`. 한꺼번에 6건 넘게 생기면(초기화 등) 강조하지 않음.
+- 멈춤 기준은 현장과 같은 statusAt 기준 7일. 경과일 칸은 접수일(createdAt) 기준 "n일째", 멈춘 건은 아래에 "⚠ n일 멈춤".
+- 함정: storage 이벤트는 다른 탭에서만 옴. 같은 페이지에서 Store를 바꾸면 render()를 직접 불러야 함. 항목 5의 초기화 버튼이 본부 탭에 미치는 영향도 이 경로로 처리됨.
