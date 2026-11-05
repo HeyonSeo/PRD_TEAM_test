@@ -13,6 +13,12 @@
 </header>
 <main class="wrap narrow" id="app">
 
+  <!-- 위쪽 탭: 등록 / 접수 목록 -->
+  <nav class="tabs" id="tabs" aria-label="화면 바꾸기" hidden>
+    <button type="button" class="btn tab" id="tab-register" data-view="register">새로 등록</button>
+    <button type="button" class="btn tab" id="tab-list" data-view="list">접수 목록 <span class="tab-count" id="tab-count"></span></button>
+  </nav>
+
   <!-- 처음 한 번: 우리 단지 고르기 -->
   <section id="view-pick" class="view" hidden>
     <div class="card">
@@ -59,7 +65,19 @@
       <p id="done-detail"></p>
       <p class="muted">본부 화면에도 바로 올라갔습니다. 사무실에서 다시 입력하지 않아도 됩니다.</p>
       <button type="button" class="btn primary block big" id="again-btn">한 건 더 등록</button>
+      <button type="button" class="btn block" id="to-list-btn">접수 목록 보기</button>
     </div>
+  </section>
+
+  <!-- 우리 단지 접수 목록: 입주민 전화가 오면 동·호수로 바로 찾기 -->
+  <section id="view-list" class="view" hidden>
+    <div class="card search-card">
+      <label for="search-input" class="search-label">동·호수로 찾기</label>
+      <input type="search" id="search-input" class="text-input" inputmode="numeric" autocomplete="off" placeholder="예: 101 1203">
+      <div class="status-filter" id="status-filter" role="group" aria-label="상태로 보기"></div>
+      <p class="muted small-note" id="list-note"></p>
+    </div>
+    <ol class="report-list" id="report-list"></ol>
   </section>
 
   <p class="center"><button type="button" class="btn linkish" id="change-complex" hidden>단지 바꾸기</button></p>
@@ -76,8 +94,16 @@
   var state = { complexId: null, photos: [], dong: null, ho: null, startedAt: 0, busy: 0 };
 
   function show(name) {
-    ['pick', 'register', 'done'].forEach(function (v) { $('view-' + v).hidden = v !== name; });
+    ['pick', 'register', 'done', 'list'].forEach(function (v) { $('view-' + v).hidden = v !== name; });
     $('change-complex').hidden = name === 'pick';
+    $('tabs').hidden = name === 'pick';
+    var active = name === 'list' ? 'list' : 'register';
+    ['register', 'list'].forEach(function (t) {
+      var b = $('tab-' + t);
+      b.classList.toggle('on', t === active);
+      b.setAttribute('aria-current', t === active ? 'page' : 'false');
+    });
+    if (state.complexId) updateTabCount();
     window.scrollTo(0, 0);
   }
 
@@ -319,7 +345,185 @@
   });
 
   $('again-btn').addEventListener('click', openRegister);
+  $('to-list-btn').addEventListener('click', openList);
   $('change-complex').addEventListener('click', renderPick);
+  $('tab-register').addEventListener('click', function () {
+    if ($('view-register').hidden) openRegister();
+  });
+  $('tab-list').addEventListener('click', openList);
+
+  // ---------- 우리 단지 접수 목록 ----------
+  var STATUSES = LH_DATA.statuses; // 접수 → 업체 배정 → 보수 완료
+  var listFilter = '전체';
+
+  function myReports() {
+    return Store.list().filter(function (r) { return r.complexId === state.complexId; });
+  }
+
+  function updateTabCount() {
+    var open = myReports().filter(function (r) { return r.status !== '보수 완료'; }).length;
+    $('tab-count').textContent = open ? '(진행 ' + open + ')' : '';
+  }
+
+  // "101 1203", "101동 1203호", "101-1203", "1203" 모두 찾기. 숫자 둘이면 앞은 동, 뒤는 호
+  function matches(r, query) {
+    var tokens = query.match(/\d+/g);
+    if (!tokens) return true;
+    if (tokens.length === 1 && tokens[0].length >= 6) {
+      // "1011203"처럼 붙여 쓴 경우
+      return (r.dong + r.ho).indexOf(tokens[0]) >= 0;
+    }
+    if (tokens.length >= 2) return r.dong.indexOf(tokens[0]) === 0 && r.ho.indexOf(tokens[1]) === 0;
+    return r.dong.indexOf(tokens[0]) === 0 || r.ho.indexOf(tokens[0]) === 0;
+  }
+
+  function daysText(n) { return n === 0 ? '오늘' : n + '일째'; }
+
+  function fmtDate(ts) {
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일';
+  }
+
+  function renderFilter(all) {
+    var box = $('status-filter');
+    box.innerHTML = '';
+    ['전체'].concat(STATUSES).forEach(function (st) {
+      var n = st === '전체' ? all.length : all.filter(function (r) { return r.status === st; }).length;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn choice small' + (listFilter === st ? ' on' : '');
+      b.dataset.filter = st;
+      b.setAttribute('aria-pressed', listFilter === st ? 'true' : 'false');
+      b.textContent = st + ' ' + n;
+      b.addEventListener('click', function () { listFilter = st; renderList(); });
+      box.appendChild(b);
+    });
+  }
+
+  function stepsEl(status) {
+    var ol = document.createElement('div');
+    ol.className = 'steps';
+    var idx = STATUSES.indexOf(status);
+    STATUSES.forEach(function (st, i) {
+      var s = document.createElement('span');
+      s.className = 'stp' + (i < idx ? ' past' : '') + (i === idx ? ' now' : '');
+      s.textContent = st;
+      ol.appendChild(s);
+    });
+    return ol;
+  }
+
+  function renderList() {
+    var all = myReports();
+    var query = $('search-input').value.trim();
+    renderFilter(all);
+    var shown = all.filter(function (r) {
+      return matches(r, query) && (listFilter === '전체' || r.status === listFilter);
+    });
+    var box = $('report-list');
+    box.innerHTML = '';
+    var now = Date.now();
+    $('list-note').textContent = query
+      ? '"' + query + '" 찾은 결과 ' + shown.length + '건'
+      : '우리 단지 접수 ' + all.length + '건 · 최근 순';
+    if (!shown.length) {
+      var empty = document.createElement('li');
+      empty.className = 'card empty';
+      empty.textContent = query ? '이 동·호수로 들어온 접수가 없습니다.' : '해당하는 접수가 없습니다.';
+      box.appendChild(empty);
+      return;
+    }
+    shown.forEach(function (r) {
+      var li = document.createElement('li');
+      li.className = 'card report';
+      li.dataset.id = r.id;
+
+      var head = document.createElement('div');
+      head.className = 'report-head';
+      var unit = document.createElement('strong');
+      unit.className = 'report-unit';
+      unit.textContent = r.dong + '동 ' + r.ho + '호';
+      var badge = document.createElement('span');
+      badge.className = 'badge s-' + r.status.replace(/ /g, '-');
+      badge.textContent = r.status;
+      head.appendChild(unit); head.appendChild(badge);
+
+      var text = document.createElement('p');
+      text.className = 'report-text';
+      text.textContent = r.text;
+
+      var meta = document.createElement('p');
+      meta.className = 'report-meta';
+      var days = Store.daysSince(r.statusAt || r.createdAt, now);
+      var stale = r.status !== '보수 완료' && days >= 7;
+      meta.textContent = fmtDate(r.createdAt) + ' 접수 · ' +
+        (r.status === '보수 완료' ? '보수 완료 ' + fmtDate(r.statusAt) : r.status + ' ' + daysText(days));
+      if (stale) meta.classList.add('stale');
+      meta.dataset.days = days;
+
+      var res = LH_DATA.findResident(r.complexId, r.dong, r.ho);
+      var who = document.createElement('p');
+      who.className = 'report-who muted';
+      who.textContent = res ? '입주민 ' + LH_DATA.maskName(res.name) + ' · ' + LH_DATA.maskPhone(res.phone) : '';
+
+      var pics = document.createElement('div');
+      pics.className = 'report-pics';
+      (r.photos || []).slice(0, 4).forEach(function (src, i) {
+        var img = document.createElement('img');
+        img.src = src;
+        img.alt = r.dong + '동 ' + r.ho + '호 사진 ' + (i + 1);
+        pics.appendChild(img);
+      });
+
+      li.appendChild(head);
+      li.appendChild(text);
+      li.appendChild(stepsEl(r.status));
+      li.appendChild(meta);
+      if (who.textContent) li.appendChild(who);
+      if (pics.childNodes.length) li.appendChild(pics);
+
+      var next = STATUSES[STATUSES.indexOf(r.status) + 1];
+      if (next) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn primary block next-btn';
+        b.dataset.next = next;
+        b.textContent = { '업체 배정': '업체 배정으로 바꾸기', '보수 완료': '보수 완료로 바꾸기' }[next] || next;
+        b.addEventListener('click', function () {
+          Store.setStatus(r.id, next);
+          renderList();
+          updateTabCount();
+          var again = document.querySelector('.report[data-id="' + r.id + '"]');
+          if (again) {
+            again.classList.add('just-changed');
+            var f = again.querySelector('.next-btn') || again;
+            if (f.focus) try { f.focus({ preventScroll: true }); } catch (e) { /* 무시 */ }
+          }
+        });
+        li.appendChild(b);
+      } else {
+        var done = document.createElement('p');
+        done.className = 'report-done';
+        done.textContent = '✓ 처리 끝';
+        li.appendChild(done);
+      }
+      box.appendChild(li);
+    });
+  }
+
+  function openList() {
+    renderList();
+    show('list');
+  }
+
+  $('search-input').addEventListener('input', renderList);
+
+  // 다른 탭(본부 화면 등)에서 바뀌면 목록도 새로 그림
+  Store.onChange(function () {
+    if (!state.complexId) return;
+    updateTabCount();
+    if (!$('view-list').hidden) renderList();
+  });
 
   var saved = Store.getMyComplex();
   if (saved && LH_DATA.findComplex(saved)) start(saved); else renderPick();

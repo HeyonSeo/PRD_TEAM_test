@@ -254,6 +254,116 @@ async function noHScroll(page) {
       await page.evaluate(() => Store.reset());
       await ctx.close();
     }
+
+    // ---------- 항목 3: 현장 접수 목록과 상태 변경 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true });
+      const page = await ctx.newPage();
+      const bag = { errors: [], external: [] };
+      watch(page, base, bag);
+      await page.goto(base + 'field.html');
+      await page.evaluate(() => { Store.reset(); Store.setMyComplex('c05'); });
+      await page.reload();
+
+      check('[3] 등록 화면에 접수 목록 탭 있음', await page.isVisible('#tab-list'));
+      await page.click('#tab-list');
+      check('[3] 탭 누르면 접수 목록 화면', await page.isVisible('#view-list') && !(await page.isVisible('#view-register')));
+
+      const expected = await page.evaluate(() => Store.list().filter((r) => r.complexId === 'c05').map((r) => r.id));
+      const shownIds = await page.$$eval('#report-list .report', (els) => els.map((e) => e.dataset.id));
+      check('[3] 우리 단지 접수만 최근 순으로 표시', JSON.stringify(shownIds) === JSON.stringify(expected) && expected.length > 0, JSON.stringify({ shownIds, expected }));
+
+      // 전화 온 세대: 우리 단지의 '접수' 상태 건 하나를 동·호수로 찾기
+      const target = await page.evaluate(() => {
+        const c = LH_DATA.findComplex('c05');
+        const r = Store.add({ complexId: 'c05', dong: c.dongs[2].dong, ho: c.dongs[2].units[7].ho, text: '검사용 현관문 안 닫힘', photos: [] });
+        return { id: r.id, dong: r.dong, ho: r.ho };
+      });
+      await page.click('#tab-register');
+      await page.click('#tab-list');
+      await page.fill('#search-input', `${target.dong} ${target.ho}`);
+      let found = await page.$$eval('#report-list .report', (els) => els.map((e) => e.dataset.id));
+      check('[3] "동 호" 검색으로 그 세대 건만 나옴', found.includes(target.id) && found.length >= 1 &&
+        (await page.evaluate((ids) => ids.every((id) => { const r = Store.list().find((x) => x.id === id); return r.complexId === 'c05'; }), found)), JSON.stringify(found));
+      const allMatch = await page.evaluate(([ids, t]) => ids.every((id) => { const r = Store.list().find((x) => x.id === id); return r.dong === t.dong && r.ho === t.ho; }), [found, target]);
+      check('[3] 검색 결과가 모두 그 동·호수', allMatch);
+      await page.fill('#search-input', `${target.dong}동 ${target.ho}호`);
+      found = await page.$$eval('#report-list .report', (els) => els.map((e) => e.dataset.id));
+      check('[3] "101동 1203호" 형태로도 찾음', found.includes(target.id));
+      await page.fill('#search-input', `${target.ho}`);
+      found = await page.$$eval('#report-list .report', (els) => els.map((e) => e.dataset.id));
+      check('[3] 호수만 입력해도 찾음', found.includes(target.id));
+      await page.fill('#search-input', '999 9999');
+      check('[3] 없는 동·호수면 안내 문구', (await page.locator('#report-list .report').count()) === 0 && (await page.textContent('#report-list')).includes('없습니다'));
+      await page.fill('#search-input', `${target.dong} ${target.ho}`);
+
+      const card = page.locator(`#report-list .report[data-id="${target.id}"]`);
+      const masked = await card.textContent();
+      const raw = await page.evaluate((t) => LH_DATA.findResident('c05', t.dong, t.ho), target);
+      check('[3] 목록에 입주민 연락처 마스킹 표시', masked.includes(await page.evaluate((p) => LH_DATA.maskPhone(p), raw.phone)) && !masked.includes(raw.phone) && !masked.includes(raw.name), masked);
+      check('[3] 상태와 경과 일수 표시', /접수/.test(masked) && /(오늘|\d+일째)/.test(masked), masked);
+      await page.screenshot({ path: path.join(SHOTS, '3-field-list-search.png'), fullPage: true });
+
+      // 버튼 한 번으로 접수 → 업체 배정 → 보수 완료
+      await card.locator('.next-btn').click();
+      let st = await page.evaluate((id) => JSON.parse(localStorage.getItem(Store.KEY)).find((r) => r.id === id).status, target.id);
+      check('[3] 버튼 한 번에 업체 배정으로 바뀌고 store 반영', st === '업체 배정', st);
+      check('[3] 화면 배지도 업체 배정', (await card.locator('.badge').textContent()).trim() === '업체 배정');
+      check('[3] 상태 바꾼 뒤에도 검색 유지', (await page.inputValue('#search-input')) === `${target.dong} ${target.ho}` && (await card.count()) === 1);
+      await card.locator('.next-btn').click();
+      st = await page.evaluate((id) => JSON.parse(localStorage.getItem(Store.KEY)).find((r) => r.id === id).status, target.id);
+      check('[3] 한 번 더 누르면 보수 완료로 store 반영', st === '보수 완료', st);
+      check('[3] 보수 완료 건은 더 누를 버튼 없음', (await card.locator('.next-btn').count()) === 0 && (await card.textContent()).includes('처리 끝'));
+      const hist = await page.evaluate((id) => Store.list().find((r) => r.id === id).history.map((h) => h.status), target.id);
+      check('[3] 상태 이력이 순서대로 남음', JSON.stringify(hist) === JSON.stringify(['접수', '업체 배정', '보수 완료']), JSON.stringify(hist));
+
+      // 경과 일수: 오래 멈춘 시드 건은 "n일째"와 경고 표시
+      await page.fill('#search-input', '');
+      const ages = await page.evaluate(() => {
+        const now = Date.now();
+        return Array.from(document.querySelectorAll('#report-list .report')).map((el) => {
+          const r = Store.list().find((x) => x.id === el.dataset.id);
+          const meta = el.querySelector('.report-meta');
+          return { status: r.status, days: Store.daysSince(r.statusAt, now), shown: +meta.dataset.days, stale: meta.classList.contains('stale'), text: meta.textContent };
+        });
+      });
+      check('[3] 표시된 경과 일수가 상태 바뀐 날 기준', ages.every((a) => a.shown === a.days), JSON.stringify(ages));
+      check('[3] 7일 넘게 멈춘 진행 중 건은 경고 표시', ages.every((a) => a.stale === (a.status !== '보수 완료' && a.days >= 7)), JSON.stringify(ages));
+
+      // 새로고침해도 바뀐 상태 유지
+      await page.reload();
+      await page.click('#tab-list');
+      await page.fill('#search-input', `${target.dong} ${target.ho}`);
+      check('[3] 새로고침 후에도 보수 완료 유지', (await page.locator(`#report-list .report[data-id="${target.id}"] .badge`).textContent()).trim() === '보수 완료');
+
+      // 상태로 거르기
+      await page.fill('#search-input', '');
+      await page.click('#status-filter button[data-filter="접수"]');
+      const onlyNew = await page.evaluate(() => Array.from(document.querySelectorAll('#report-list .report .badge')).every((b) => b.textContent.trim() === '접수'));
+      check('[3] 상태 버튼으로 거르기', onlyNew);
+      await page.click('#status-filter button[data-filter="전체"]');
+
+      // 접근성: 버튼 44px, 글씨 16px, 가로 스크롤 없음
+      const small = await page.evaluate(() => Array.from(document.querySelectorAll('#view-list button, #tabs button'))
+        .filter((b) => b.offsetParent !== null)
+        .map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), w: r.width, h: r.height }; })
+        .filter((r) => r.w < 44 || r.h < 44));
+      check('[3] 목록 화면 버튼 모두 44px 이상', small.length === 0, JSON.stringify(small));
+      const smallFont = await page.evaluate(() => Array.from(document.querySelectorAll('#view-list *, #tabs *'))
+        .filter((e) => e.offsetParent !== null && Array.from(e.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim()))
+        .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.textContent.trim().slice(0, 20)));
+      check('[3] 목록 화면 글씨 16px 이상', smallFont.length === 0, JSON.stringify(smallFont));
+      check('[3] 목록 화면 가로 스크롤 없음(375px)', await noHScroll(page));
+      await page.screenshot({ path: path.join(SHOTS, '3-field-list.png'), fullPage: true });
+
+      // 등록 완료 화면에서 목록으로 바로 가기
+      check('[3] 완료 화면에 접수 목록 보기 버튼', (await page.locator('#view-done #to-list-btn').count()) === 1);
+
+      check('[3] 목록 흐름 콘솔 에러 없음', bag.errors.length === 0, bag.errors.join(' | '));
+      check('[3] 목록 흐름 외부 요청 없음', bag.external.length === 0, bag.external.join(' | '));
+      await page.evaluate(() => Store.reset());
+      await ctx.close();
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {

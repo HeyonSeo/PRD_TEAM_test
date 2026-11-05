@@ -15,3 +15,9 @@
 - 완료 화면 `#done-title`에 "등록 완료 · 00초"(60초 넘으면 "1분 05초"). 타이머는 등록 화면을 연 순간(`openRegister`) 시작.
 - 항목 3(접수 목록)은 field.html에 view를 하나 더 추가하고 `show()`의 목록 배열에 이름을 넣으면 됨. `[hidden]{display:none!important}`가 style.css에 있음.
 - 함정: check.js 항목 2는 끝에 Store.reset()으로 정리함. 버튼 44px·글씨 16px 검사가 `#view-register` 안 요소 전체에 걸려 있으니 새 요소도 이 기준을 지킬 것.
+
+## 반복 3 — 3. 현장 접수 목록과 상태 변경 (PASS)
+- field.html 위쪽에 탭(`#tabs`: `#tab-register` 새로 등록 / `#tab-list` 접수 목록, 진행 중 건수 표시) 추가, 단지 고르기 화면에서만 숨김. 새 화면 `#view-list`, 완료 화면에 `#to-list-btn`.
+- 목록: 우리 단지 건만 최근 순, `#search-input`(숫자 둘이면 앞=동·뒤=호 앞자리 일치, 하나면 동 또는 호), `#status-filter button[data-filter]`로 상태 거르기. 각 건 `.report[data-id]`에 배지·3단계 표시·"n일째"(statusAt 기준, `.report-meta[data-days]`)·마스킹 연락처·사진 썸네일.
+- `.next-btn`(data-next) 한 번에 Store.setStatus로 다음 상태. 보수 완료면 버튼 없이 "처리 끝". 7일 이상 멈춘 진행 중 건은 `.report-meta.stale`(빨간 글씨) — 본부 카드 경고(항목 4)도 같은 기준(statusAt 기준 7일)을 쓰면 일관됨.
+- Store.onChange로 다른 탭 변경 시 목록 다시 그림. 함정: 호수 "101"(1층 1호)과 동 "101"이 같아서 숫자 하나 검색은 둘 다 걸림(의도된 동작).
