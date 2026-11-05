@@ -6,20 +6,324 @@
 <title>현장 하자 등록</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
-<body>
+<body class="field">
 <header class="topbar">
   <h1>현장 하자 등록</h1>
+  <span class="sub" id="complex-label"></span>
 </header>
 <main class="wrap narrow" id="app">
-  <section class="card">
-    <p>관리사무소 과장님이 폰으로 쓰는 화면입니다.</p>
-    <p class="muted" id="field-summary"></p>
+
+  <!-- 처음 한 번: 우리 단지 고르기 -->
+  <section id="view-pick" class="view" hidden>
+    <div class="card">
+      <h2>우리 단지를 골라 주세요</h2>
+      <p class="muted">처음 한 번만 고르면 다음부터는 바로 등록 화면이 열립니다.</p>
+      <div class="pick-list" id="complex-list"></div>
+    </div>
   </section>
+
+  <!-- 등록 화면: 사진, 동·호수, 한 줄 -->
+  <section id="view-register" class="view" hidden>
+    <form id="reg-form" autocomplete="off" novalidate>
+      <div class="card step">
+        <h2><span class="step-no">1</span> 사진</h2>
+        <label class="btn primary block photo-btn" for="photo-input">사진 고르기 (여러 장 한 번에)</label>
+        <input type="file" id="photo-input" accept="image/*" multiple class="visually-hidden">
+        <p class="muted small-note" id="photo-note">아직 고른 사진이 없습니다.</p>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="card step">
+        <h2><span class="step-no">2</span> 동·호수</h2>
+        <div class="choice-row" id="dong-list" role="group" aria-label="동 선택"></div>
+        <div class="ho-grid" id="ho-list" role="group" aria-label="호 선택"></div>
+        <div class="resident" id="resident" hidden></div>
+      </div>
+
+      <div class="card step">
+        <h2><span class="step-no">3</span> 한 줄 내용</h2>
+        <input type="text" id="text-input" class="text-input" maxlength="60" placeholder="예: 욕실 천장에서 물이 샘" aria-label="한 줄 내용">
+        <div class="chips" id="chips" aria-label="자주 쓰는 말"></div>
+      </div>
+
+      <p class="missing" id="missing"></p>
+      <button type="submit" class="btn primary block big" id="submit-btn" disabled>등록하기</button>
+    </form>
+  </section>
+
+  <!-- 완료 화면 -->
+  <section id="view-done" class="view" hidden>
+    <div class="card done">
+      <div class="done-mark" aria-hidden="true">✓</div>
+      <h2 id="done-title">등록 완료</h2>
+      <p id="done-detail"></p>
+      <p class="muted">본부 화면에도 바로 올라갔습니다. 사무실에서 다시 입력하지 않아도 됩니다.</p>
+      <button type="button" class="btn primary block big" id="again-btn">한 건 더 등록</button>
+    </div>
+  </section>
+
+  <p class="center"><button type="button" class="btn linkish" id="change-complex" hidden>단지 바꾸기</button></p>
 </main>
 <script src="assets/data.js"></script>
 <script src="assets/store.js"></script>
 <script>
-  document.getElementById('field-summary').textContent = '등록된 접수 ' + Store.list().length + '건';
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var MAX_SIDE = 480;
+  var CHIPS = ['물이 샘', '곰팡이', '방충망 찢어짐', '문이 안 닫힘', '전등 안 켜짐', '보일러 고장'];
+
+  var state = { complexId: null, photos: [], dong: null, ho: null, startedAt: 0, busy: 0 };
+
+  function show(name) {
+    ['pick', 'register', 'done'].forEach(function (v) { $('view-' + v).hidden = v !== name; });
+    $('change-complex').hidden = name === 'pick';
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- 단지 고르기 ----------
+  function renderPick() {
+    var box = $('complex-list');
+    box.innerHTML = '';
+    LH_DATA.complexes.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn block';
+      b.textContent = c.name;
+      b.dataset.complex = c.id;
+      b.addEventListener('click', function () {
+        Store.setMyComplex(c.id);
+        start(c.id);
+      });
+      box.appendChild(b);
+    });
+    $('complex-label').textContent = '';
+    show('pick');
+  }
+
+  function start(complexId) {
+    var c = LH_DATA.findComplex(complexId);
+    if (!c) { renderPick(); return; }
+    state.complexId = c.id;
+    $('complex-label').textContent = c.name;
+    openRegister();
+  }
+
+  // ---------- 등록 화면 ----------
+  function openRegister() {
+    state.photos = [];
+    state.dong = null;
+    state.ho = null;
+    state.busy = 0;
+    $('photo-input').value = '';
+    $('text-input').value = '';
+    renderThumbs();
+    renderDongs();
+    renderHos();
+    renderResident();
+    updateSubmit();
+    show('register');
+    state.startedAt = Date.now(); // 등록 화면을 연 순간부터 잰다
+  }
+
+  function renderThumbs() {
+    var box = $('thumbs');
+    box.innerHTML = '';
+    state.photos.forEach(function (src, i) {
+      var wrap = document.createElement('div');
+      wrap.className = 'thumb';
+      var img = document.createElement('img');
+      img.src = src;
+      img.alt = '고른 사진 ' + (i + 1);
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'thumb-del';
+      del.setAttribute('aria-label', '사진 ' + (i + 1) + ' 빼기');
+      del.textContent = '×';
+      del.addEventListener('click', function () {
+        state.photos.splice(i, 1);
+        renderThumbs();
+        updateSubmit();
+      });
+      wrap.appendChild(img);
+      wrap.appendChild(del);
+      box.appendChild(wrap);
+    });
+    $('photo-note').textContent = state.busy ? '사진을 줄이는 중…' :
+      (state.photos.length ? '사진 ' + state.photos.length + '장' : '아직 고른 사진이 없습니다.');
+  }
+
+  // 긴 변 480px 이하 JPEG로 줄이기
+  function shrink(file) {
+    return new Promise(function (resolve) {
+      var url;
+      try { url = URL.createObjectURL(file); } catch (e) { resolve(null); return; }
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var scale = Math.min(1, MAX_SIDE / Math.max(w, h));
+        var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+        var cv = document.createElement('canvas');
+        cv.width = cw; cv.height = ch;
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, cw, ch);
+        ctx.drawImage(img, 0, 0, cw, ch);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  $('photo-input').addEventListener('change', function (e) {
+    var files = Array.prototype.slice.call(e.target.files || []).filter(function (f) { return /^image\//.test(f.type); });
+    if (!files.length) return;
+    state.busy++;
+    renderThumbs();
+    updateSubmit();
+    Promise.all(files.map(shrink)).then(function (urls) {
+      urls.forEach(function (u) { if (u) state.photos.push(u); });
+      state.busy--;
+      e.target.value = '';
+      renderThumbs();
+      updateSubmit();
+    });
+  });
+
+  function complex() { return LH_DATA.findComplex(state.complexId); }
+
+  function renderDongs() {
+    var box = $('dong-list');
+    box.innerHTML = '';
+    complex().dongs.forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn choice' + (state.dong === d.dong ? ' on' : '');
+      b.textContent = d.dong + '동';
+      b.dataset.dong = d.dong;
+      b.setAttribute('aria-pressed', state.dong === d.dong ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        state.dong = d.dong;
+        state.ho = null;
+        renderDongs();
+        renderHos();
+        renderResident();
+        updateSubmit();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function renderHos() {
+    var box = $('ho-list');
+    box.innerHTML = '';
+    if (!state.dong) {
+      box.innerHTML = '<p class="muted">동을 먼저 누르면 호수가 나옵니다.</p>';
+      return;
+    }
+    var dong = complex().dongs.filter(function (d) { return d.dong === state.dong; })[0];
+    var perFloor = 0;
+    dong.units.forEach(function (u) { if (Math.floor(+u.ho / 100) === 1) perFloor++; });
+    box.style.gridTemplateColumns = 'repeat(' + Math.max(2, perFloor) + ', 1fr)';
+    dong.units.forEach(function (u) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn choice' + (state.ho === u.ho ? ' on' : '');
+      b.textContent = u.ho + '호';
+      b.dataset.ho = u.ho;
+      b.setAttribute('aria-pressed', state.ho === u.ho ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        state.ho = u.ho;
+        renderHos();
+        renderResident();
+        updateSubmit();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  // 동·호수를 고르면 입주민 연락처가 자동으로 붙음(화면에는 가려서 표시)
+  function renderResident() {
+    var el = $('resident');
+    if (!state.dong || !state.ho) { el.hidden = true; el.textContent = ''; return; }
+    var r = LH_DATA.findResident(state.complexId, state.dong, state.ho);
+    el.hidden = false;
+    el.innerHTML = '';
+    var t = document.createElement('strong');
+    t.textContent = state.dong + '동 ' + state.ho + '호';
+    var d = document.createElement('span');
+    d.textContent = r ? ' · 입주민 ' + LH_DATA.maskName(r.name) + ' · ' : ' · 입주민 정보 없음';
+    if (r) {
+      var ph = document.createElement('span');
+      ph.className = 'nowrap';
+      ph.textContent = LH_DATA.maskPhone(r.phone);
+      d.appendChild(ph);
+    }
+    var n = document.createElement('div');
+    n.className = 'muted small-note';
+    n.textContent = '연락처는 자동으로 붙습니다.';
+    el.appendChild(t); el.appendChild(d); el.appendChild(n);
+  }
+
+  CHIPS.forEach(function (c) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn chip';
+    b.textContent = c;
+    b.addEventListener('click', function () {
+      var input = $('text-input');
+      input.value = input.value.trim() ? input.value.trim() + ', ' + c : c;
+      updateSubmit();
+    });
+    $('chips').appendChild(b);
+  });
+  $('text-input').addEventListener('input', updateSubmit);
+
+  function missingParts() {
+    var m = [];
+    if (!state.photos.length) m.push('사진');
+    if (!state.dong || !state.ho) m.push('동·호수');
+    if (!$('text-input').value.trim()) m.push('한 줄 내용');
+    return m;
+  }
+
+  function updateSubmit() {
+    var m = missingParts();
+    var ready = !m.length && !state.busy;
+    $('submit-btn').disabled = !ready;
+    $('missing').textContent = state.busy ? '사진을 줄이는 중입니다…' :
+      (ready ? '준비됐습니다. 등록하기를 누르세요.' : '남은 것: ' + m.join(', '));
+  }
+
+  function formatElapsed(sec) {
+    if (sec < 60) return String(sec).padStart(2, '0') + '초';
+    return Math.floor(sec / 60) + '분 ' + String(sec % 60).padStart(2, '0') + '초';
+  }
+
+  $('reg-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (missingParts().length || state.busy) return;
+    var item = Store.add({
+      complexId: state.complexId,
+      dong: state.dong,
+      ho: state.ho,
+      text: $('text-input').value.trim(),
+      photos: state.photos.slice()
+    });
+    var sec = Math.max(0, Math.round((Date.now() - state.startedAt) / 1000));
+    $('done-title').textContent = '등록 완료 · ' + formatElapsed(sec);
+    $('done-detail').textContent = item.dong + '동 ' + item.ho + '호 · ' + item.text + ' · 사진 ' + item.photos.length + '장';
+    show('done');
+  });
+
+  $('again-btn').addEventListener('click', openRegister);
+  $('change-complex').addEventListener('click', renderPick);
+
+  var saved = Store.getMyComplex();
+  if (saved && LH_DATA.findComplex(saved)) start(saved); else renderPick();
+})();
 </script>
 </body>
 </html>

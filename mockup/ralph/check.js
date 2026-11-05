@@ -145,6 +145,115 @@ async function noHScroll(page) {
       await blocked.close();
       await ctx.close();
     }
+
+    // ---------- 항목 2: 현장 등록 흐름 ----------
+    {
+      const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true });
+      const page = await ctx.newPage();
+      const bag = { errors: [], external: [] };
+      watch(page, base, bag);
+      await page.goto(base + 'field.html');
+      await page.evaluate(() => Store.reset());
+      await page.reload();
+
+      // 처음: 단지 고르기 화면
+      check('[2] 처음 열면 단지 고르기 화면', await page.isVisible('#view-pick') && !(await page.isVisible('#view-register')));
+      check('[2] 단지 12곳 버튼', (await page.locator('#complex-list button').count()) === 12);
+      await page.screenshot({ path: path.join(SHOTS, '2-field-pick.png'), fullPage: true });
+      const cid = 'c02';
+      await page.click(`#complex-list button[data-complex="${cid}"]`);
+      check('[2] 단지를 고르면 바로 등록 화면', await page.isVisible('#view-register'));
+
+      // 다시 열면 단지를 기억(고르기 화면 없이 등록 화면)
+      await page.reload();
+      check('[2] 다시 열면 단지 기억(바로 등록 화면)', await page.isVisible('#view-register') && !(await page.isVisible('#view-pick')));
+      const label = await page.textContent('#complex-label');
+      check('[2] 상단에 우리 단지 이름 표시', label.includes('푸른숲 2단지'), label);
+
+      // 입력 칸은 사진, 한 줄 두 개뿐(동·호수는 버튼)
+      const fields = await page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('#reg-form input, #reg-form textarea, #reg-form select'));
+        return els.map((e) => e.type || e.tagName.toLowerCase());
+      });
+      check('[2] 입력 칸은 사진·한 줄뿐(연락처 입력 칸 없음)', fields.length === 2 && fields.includes('file') && fields.includes('text'), JSON.stringify(fields));
+      check('[2] 처음엔 등록 버튼 비활성', await page.isDisabled('#submit-btn'));
+
+      // 큰 원본 사진 2장 만들기(1600x1200, 900x1400)
+      const makePng = (w, h, color) => page.evaluate(([w, h, color]) => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, w, h);
+        x.fillStyle = '#333'; x.fillRect(w / 4, h / 4, w / 2, h / 2);
+        return c.toDataURL('image/png').split(',')[1];
+      }, [w, h, color]);
+      const p1 = Buffer.from(await makePng(1600, 1200, '#8bc34a'), 'base64');
+      const p2 = Buffer.from(await makePng(900, 1400, '#03a9f4'), 'base64');
+      await page.setInputFiles('#photo-input', [
+        { name: 'a.png', mimeType: 'image/png', buffer: p1 },
+        { name: 'b.png', mimeType: 'image/png', buffer: p2 }
+      ]);
+      await page.waitForFunction(() => document.querySelectorAll('#thumbs img').length === 2, null, { timeout: 5000 });
+      check('[2] 사진 2장 한 번에 선택 → 미리보기 2장', (await page.locator('#thumbs img').count()) === 2);
+
+      // 동 → 호 버튼
+      const c = await page.evaluate((id) => LH_DATA.findComplex(id), cid);
+      const dong = c.dongs[1].dong;
+      const unit = c.dongs[1].units[5];
+      await page.click(`#dong-list button[data-dong="${dong}"]`);
+      check('[2] 동을 누르면 호 버튼 목록', (await page.locator('#ho-list button').count()) === c.dongs[1].units.length);
+      await page.click(`#ho-list button[data-ho="${unit.ho}"]`);
+      const resText = await page.textContent('#resident');
+      const expectPhone = await page.evaluate((p) => LH_DATA.maskPhone(p), unit.resident.phone);
+      check('[2] 동·호수 고르면 연락처 자동 표시(마스킹)', resText.includes(expectPhone) && !resText.includes(unit.resident.phone) && !resText.includes(unit.resident.name), resText);
+
+      await page.click('#chips button:nth-child(1)');
+      await page.fill('#text-input', '욕실 천장에서 물이 샘');
+      check('[2] 세 가지를 채우면 등록 버튼 활성', !(await page.isDisabled('#submit-btn')));
+
+      // 터치 영역 44px 이상, 가로 스크롤 없음
+      const small = await page.evaluate(() => Array.from(document.querySelectorAll('#view-register button, #view-register label.btn'))
+        .filter((b) => b.offsetParent !== null)
+        .map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), w: r.width, h: r.height }; })
+        .filter((r) => r.w < 44 || r.h < 44));
+      check('[2] 등록 화면 버튼 모두 44px 이상', small.length === 0, JSON.stringify(small));
+      const smallFont = await page.evaluate(() => Array.from(document.querySelectorAll('#view-register *'))
+        .filter((e) => e.offsetParent !== null && e.childNodes.length && Array.from(e.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim()))
+        .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.textContent.trim().slice(0, 20)));
+      check('[2] 등록 화면 글씨 16px 이상', smallFont.length === 0, JSON.stringify(smallFont));
+      check('[2] 등록 화면 가로 스크롤 없음(375px)', await noHScroll(page));
+      await page.screenshot({ path: path.join(SHOTS, '2-field-register.png'), fullPage: true });
+
+      const before = await page.evaluate(() => Store.list().length);
+      await page.click('#submit-btn');
+      await page.waitForSelector('#view-done', { state: 'visible' });
+      const doneTitle = await page.textContent('#done-title');
+      check('[2] 완료 화면 "등록 완료 · 00초" 표시', /^등록 완료 · (\d{2}초|\d+분 \d{2}초)$/.test(doneTitle.trim()), doneTitle);
+      check('[2] 완료 화면 가로 스크롤 없음', await noHScroll(page));
+      await page.screenshot({ path: path.join(SHOTS, '2-field-done.png'), fullPage: true });
+
+      const saved = await page.evaluate(async () => {
+        const stored = JSON.parse(localStorage.getItem(Store.KEY) || '[]');
+        const top = Store.list()[0];
+        const sizes = await Promise.all(top.photos.map((src) => new Promise((res) => {
+          const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.onerror = () => res([0, 0]); i.src = src;
+        })));
+        return { count: stored.length, top, inStorage: stored.some((r) => r.id === top.id && r.photos.length === 2), sizes };
+      });
+      check('[2] 등록된 건이 store에 1건 추가', saved.count === before + 1, saved.count + ' vs ' + before);
+      check('[2] 단지·동·호수·내용이 맞게 저장', saved.top.complexId === cid && saved.top.dong === dong && saved.top.ho === unit.ho && saved.top.text.includes('욕실 천장') && saved.top.status === '접수', JSON.stringify({ ...saved.top, photos: saved.top.photos.length }));
+      check('[2] 사진 2장이 localStorage에 함께 저장', saved.inStorage);
+      check('[2] 사진은 JPEG dataURL', saved.top.photos.every((p) => p.startsWith('data:image/jpeg')));
+      check('[2] 사진 긴 변 480px 이하', saved.sizes.every(([w, h]) => w > 0 && Math.max(w, h) <= 480), JSON.stringify(saved.sizes));
+
+      // 한 건 더 등록 → 빈 등록 화면
+      await page.click('#again-btn');
+      const fresh = await page.evaluate(() => ({ thumbs: document.querySelectorAll('#thumbs img').length, text: document.getElementById('text-input').value, disabled: document.getElementById('submit-btn').disabled }));
+      check('[2] 한 건 더 등록 → 빈 등록 화면', fresh.thumbs === 0 && fresh.text === '' && fresh.disabled, JSON.stringify(fresh));
+
+      check('[2] 현장 흐름 콘솔 에러 없음', bag.errors.length === 0, bag.errors.join(' | '));
+      check('[2] 현장 흐름 외부 요청 없음', bag.external.length === 0, bag.external.join(' | '));
+      await page.evaluate(() => Store.reset());
+      await ctx.close();
+    }
   } catch (e) {
     check('검사 실행 중 예외 없음', false, e && e.stack);
   } finally {
