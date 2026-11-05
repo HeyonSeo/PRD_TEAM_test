@@ -60,6 +60,8 @@ function loadRequirements() {
     if (h) { cur = { id: h[1], title: h[2].trim(), status: '' }; reqs.push(cur); continue; }
     const st = line.match(/^- \*\*상태\*\*: (.+)$/);
     if (st && cur && !cur.status) cur.status = st[1].trim();
+    const rec = line.match(/^- \*\*기록\*\*: (.+)$/);
+    if (rec && cur) cur.record = rec[1].trim();
   }
   return reqs;
 }
@@ -72,7 +74,7 @@ function traceability() {
   const reqs = loadRequirements();
   const byId = new Map(reqs.map((r) => [r.id, r]));
   const problems = [];
-  const STATUSES = ['충족', '미충족', '범위 확인', '수동', '범위 밖'];
+  const STATUSES = ['충족', '미충족', '범위 확인', '수동', '수동 통과', '범위 밖'];
   reqs.forEach((r) => { if (!STATUSES.includes(r.status)) problems.push(`${r.id}: 상태 값이 없거나 잘못됨(${r.status || '없음'})`); });
   TRACE.forEach(([re, list]) => list.forEach((id) => { if (!byId.has(id)) problems.push(`trace.js ${re} → 문서에 없는 ID ${id}`); }));
   results.filter((t) => !t.reqs.length).forEach((t) => problems.push(`요구사항에 연결되지 않은 테스트: ${t.name}`));
@@ -83,11 +85,12 @@ function traceability() {
     const ts = tests.get(r.id);
     if (r.status === '충족' && !ts.length) problems.push(`${r.id}: 충족인데 연결된 테스트가 없음`);
     if (r.status === '충족' && ts.some((t) => !t.ok)) problems.push(`${r.id}: 충족인데 실패한 테스트가 있음`);
+    if (r.status === '수동 통과' && !r.record) problems.push(`${r.id}: 수동 통과인데 기록 링크(- **기록**:)가 없음`);
   });
 
   const icon = (r, ts) => {
     if (r.status === '충족') return ts.length && ts.every((t) => t.ok) ? '✅' : '❌';
-    return { '미충족': '⬜', '범위 확인': '⚠️', '수동': '👤', '범위 밖': '➖' }[r.status] || '?';
+    return { '미충족': '⬜', '범위 확인': '⚠️', '수동': '👤', '수동 통과': '✅', '범위 밖': '➖' }[r.status] || '?';
   };
   const out = [];
   out.push('# 요구사항 추적표');
@@ -97,7 +100,7 @@ function traceability() {
   out.push('');
   const passed = results.filter((t) => t.ok).length;
   out.push(`- 테스트 ${passed}/${results.length} 통과 · 요구사항 ${reqs.length}개 · 추적성 문제 ${problems.length}건`);
-  out.push('- 표시: ✅ 충족·테스트 통과 · ❌ 테스트 없음 또는 실패 · ⚠️ 범위 확인 필요 · ⬜ 미충족 · 👤 수동 검증 · ➖ 범위 밖');
+  out.push('- 표시: ✅ 충족·테스트 통과 또는 수동 검증 통과 · ❌ 테스트 없음 또는 실패 · ⚠️ 범위 확인 필요 · ⬜ 미충족 · 👤 수동 검증 대기 · ➖ 범위 밖');
   out.push('');
   out.push('## 요약');
   out.push('');

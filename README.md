@@ -14,6 +14,7 @@ PRD 인터뷰에서 시작해 시연용 시안까지 이어지는 과정을 모�
 | [`docs/requirements.md`](docs/requirements.md) | 요구사항 명세. 요구사항마다 ID, 사용자 시나리오, 입력·출력, 성공·실패·경계 조건, 접근 권한, 완료 기준 |
 | [`docs/traceability.md`](docs/traceability.md) | 요구사항과 테스트를 잇는 추적표. 검사를 돌릴 때마다 자동으로 다시 만들어짐 |
 | [`docs/work-plan.md`](docs/work-plan.md) | 작업 계획. 범위 점검, 막는 질문과 가정, 의존 순서별 작업(T1~T6), PRD → 이슈 → 검증 대응표 |
+| [`docs/validation/`](docs/validation/README.md) | 수동 검증 키트. 과장 1분 등록(MAN-01), 본부 30분 확인(MAN-02), 3분 시연 리허설(MAN-03) 기록 양식과 진행 방법 |
 | [`docs/architecture.md`](docs/architecture.md) | 아키텍처 문서. 시안 구조, 데이터 흐름, 데이터 모델, 운영 전환 제안 |
 | [`docs/diagrams/`](docs/diagrams/) | 아키텍처 다이어그램(SVG) 4장 |
 | [`mockup/ralph/`](mockup/ralph/) | 시안을 만든 랄프 루프의 프롬프트, 할 일 목록, 진행 기록, 검사 스크립트 |
