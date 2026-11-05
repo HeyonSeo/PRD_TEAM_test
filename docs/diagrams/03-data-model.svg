@@ -59,9 +59,9 @@
   <line x1="800" y1="248" x2="800" y2="284" stroke="#334155" stroke-width="1.5" marker-end="url(#a)"/>
   <rect x="700" y="286" width="200" height="50" rx="25" fill="#f0fdf4" stroke="#15803d"/>
   <text x="800" y="317" text-anchor="middle" font-size="15" font-weight="700" fill="#14532d">보수 완료</text>
-  <rect x="690" y="356" width="240" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
-  <text x="810" y="376" text-anchor="middle" font-size="12" fill="#991b1b">완료 전 statusAt 기준 7일 이상</text>
-  <text x="810" y="394" text-anchor="middle" font-size="12" fill="#991b1b">→ "⚠ 멈춤" 표시 (현장·본부 공통)</text>
+  <rect x="690" y="356" width="240" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="810" y="376" text-anchor="middle" font-size="12" fill="#334155">statusAt 기준 경과 일수 "N일째"만 표시</text>
+  <text x="810" y="394" text-anchor="middle" font-size="12" fill="#334155">처리 지연 경고는 없음 (OUT-07)</text>
 
   <text x="32" y="450" font-size="12" fill="#475569">입력 칸은 사진 · 동·호수 · 한 줄 세 가지뿐입니다. 나머지 필드는 모두 자동으로 채워집니다(PRD 채택 조건: 엑셀보다 입력이 많으면 안 씀).</text>
 </svg>

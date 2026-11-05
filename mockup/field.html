@@ -462,10 +462,8 @@
       var meta = document.createElement('p');
       meta.className = 'report-meta';
       var days = Store.daysSince(r.statusAt || r.createdAt, now);
-      var stale = r.status !== '보수 완료' && days >= 7;
       meta.textContent = fmtDate(r.createdAt) + ' 접수 · ' +
         (r.status === '보수 완료' ? '보수 완료 ' + fmtDate(r.statusAt) : r.status + ' ' + daysText(days));
-      if (stale) meta.classList.add('stale');
       meta.dataset.days = days;
 
       var res = LH_DATA.findResident(r.complexId, r.dong, r.ho);

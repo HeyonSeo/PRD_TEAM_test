@@ -411,18 +411,19 @@ async function noHScroll(page) {
       const hist = await page.evaluate((id) => Store.list().find((r) => r.id === id).history.map((h) => h.status), target.id);
       check('[3] 상태 이력이 순서대로 남음', JSON.stringify(hist) === JSON.stringify(['접수', '업체 배정', '보수 완료']), JSON.stringify(hist));
 
-      // 경과 일수: 오래 멈춘 시드 건은 "n일째"와 경고 표시
+      // 경과 일수: 상태 바뀐 날 기준 "n일째" (멈춤 경고는 #7에서 제거)
       await page.fill('#search-input', '');
       const ages = await page.evaluate(() => {
         const now = Date.now();
         return Array.from(document.querySelectorAll('#report-list .report')).map((el) => {
           const r = Store.list().find((x) => x.id === el.dataset.id);
           const meta = el.querySelector('.report-meta');
-          return { status: r.status, days: Store.daysSince(r.statusAt, now), shown: +meta.dataset.days, stale: meta.classList.contains('stale'), text: meta.textContent };
+          return { status: r.status, days: Store.daysSince(r.statusAt, now), shown: +meta.dataset.days, text: meta.textContent };
         });
       });
       check('[3] 표시된 경과 일수가 상태 바뀐 날 기준', ages.every((a) => a.shown === a.days), JSON.stringify(ages));
-      check('[3] 7일 넘게 멈춘 진행 중 건은 경고 표시', ages.every((a) => a.stale === (a.status !== '보수 완료' && a.days >= 7)), JSON.stringify(ages));
+      const longOpen = ages.filter((a) => a.status !== '보수 완료' && a.days >= 7);
+      check('[9] 현장: 7일 넘은 진행 중 건에도 멈춤 경고 없이 경과 일수만 표시', longOpen.length > 0 && longOpen.every((a) => !/멈춤|⚠/.test(a.text) && a.text.includes(a.days + '일째')), JSON.stringify(longOpen));
 
       // 새로고침해도 바뀐 상태 유지
       await page.reload();
@@ -477,23 +478,24 @@ async function noHScroll(page) {
           const exp = {
             total: mine.length,
             open: mine.filter((r) => r.status !== '보수 완료').length,
-            done: mine.filter((r) => r.status === '보수 완료').length,
-            stale: mine.filter((r) => r.status !== '보수 완료' && Store.daysSince(r.statusAt, now) >= 7).length
+            done: mine.filter((r) => r.status === '보수 완료').length
           };
           const el = document.querySelector(`#complex-cards .cx-card[data-complex="${c.id}"]`);
           const got = {
             total: +el.querySelector('.n-total strong').textContent,
             open: +el.querySelector('.n-open strong').textContent,
             done: +el.querySelector('.n-done strong').textContent,
-            warn: !!el.querySelector('.cx-warn'), cls: el.classList.contains('has-stale'),
+            text: el.textContent,
             name: el.querySelector('.cx-name').textContent
           };
           return { id: c.id, name: c.name, exp, got };
         });
       });
       check('[4] 카드마다 접수·진행 중·완료 건수가 맞음', cardInfo.every((x) => x.got.name === x.name && x.got.total === x.exp.total && x.got.open === x.exp.open && x.got.done === x.exp.done), JSON.stringify(cardInfo));
-      check('[4] 7일 넘게 멈춘 건이 있는 카드만 경고', cardInfo.every((x) => x.got.warn === (x.exp.stale > 0) && x.got.cls === (x.exp.stale > 0)), JSON.stringify(cardInfo));
-      check('[4] 경고 카드가 하나 이상 있음(시연용)', cardInfo.some((x) => x.exp.stale > 0));
+      check('[9] 본부: 단지 카드에 멈춤 경고 없음', cardInfo.every((x) => !/멈춤|멈춘|⚠/.test(x.got.text)), JSON.stringify(cardInfo.map((x) => x.got.text)));
+      const hqText = await hq.textContent('body');
+      check('[9] 본부: 화면 어디에도 "멈춤" 문구 없음(합계·필터·표)', !/멈춤|멈춘/.test(hqText) && (await hq.locator('#f-status button[data-status="멈춤"]').count()) === 0);
+      check('[9] 본부: 진행 중 건은 경과 일수 표시 유지', await hq.evaluate(() => Array.from(document.querySelectorAll('#report-rows tr')).some((tr) => /\d+일째/.test(tr.textContent))));
 
       const summary = await hq.textContent('#auto-summary');
       check('[4] "이번 주 취합: 자동 완료" 한 줄 요약', summary.includes('이번 주 취합: 자동 완료'), summary);

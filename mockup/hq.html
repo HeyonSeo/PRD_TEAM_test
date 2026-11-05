@@ -47,7 +47,6 @@
           <button type="button" class="btn choice small" data-status="접수">접수</button>
           <button type="button" class="btn choice small" data-status="업체 배정">업체 배정</button>
           <button type="button" class="btn choice small" data-status="보수 완료">보수 완료</button>
-          <button type="button" class="btn choice small" data-status="멈춤">7일 넘게 멈춤</button>
         </div>
       </div>
     </div>
@@ -83,15 +82,11 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var STALE_DAYS = 7; // 현장 목록과 같은 기준: 상태가 바뀐 지 7일 이상이면 멈춤
   var NEW_MS = 8000;  // 새 건 강조 시간
   var filter = { complexId: '', status: '전체' };
   var known = null;   // 이미 화면에 그린 접수 id
   var fresh = {};     // id -> 강조 끝나는 시각
 
-  function isStale(r, now) {
-    return r.status !== '보수 완료' && Store.daysSince(r.statusAt, now) >= STALE_DAYS;
-  }
   function pad(n) { return n < 10 ? '0' + n : String(n); }
   function fmtDate(ts) {
     var d = new Date(ts);
@@ -138,14 +133,13 @@
   }
 
   function renderTotals(all, now) {
-    var t = { total: all.length, open: 0, done: 0, stale: 0 };
+    var t = { total: all.length, open: 0, done: 0 };
     all.forEach(function (r) {
       if (r.status === '보수 완료') t.done++; else t.open++;
-      if (isStale(r, now)) t.stale++;
     });
     var box = $('totals');
     box.innerHTML = '';
-    [['전체 접수', t.total, ''], ['진행 중', t.open, ''], ['보수 완료', t.done, 'ok'], ['7일 넘게 멈춤', t.stale, t.stale ? 'warn' : '']]
+    [['전체 접수', t.total, ''], ['진행 중', t.open, ''], ['보수 완료', t.done, 'ok']]
       .forEach(function (x) {
         var d = el('div', 'hq-total ' + x[2]);
         d.appendChild(el('span', 'hq-total-label', x[0]));
@@ -160,9 +154,8 @@
     LH_DATA.complexes.forEach(function (c) {
       var mine = all.filter(function (r) { return r.complexId === c.id; });
       var open = mine.filter(function (r) { return r.status !== '보수 완료'; }).length;
-      var stale = mine.filter(function (r) { return isStale(r, now); }).length;
       var hasNew = mine.some(function (r) { return fresh[r.id]; });
-      var b = el('button', 'cx-card' + (stale ? ' has-stale' : '') + (hasNew ? ' is-new' : '') + (filter.complexId === c.id ? ' on' : ''));
+      var b = el('button', 'cx-card' + (hasNew ? ' is-new' : '') + (filter.complexId === c.id ? ' on' : ''));
       b.type = 'button';
       b.dataset.complex = c.id;
       b.appendChild(el('span', 'cx-name', c.name));
@@ -174,9 +167,6 @@
         nums.appendChild(s);
       });
       b.appendChild(nums);
-      var w = el('span', 'cx-warn', stale ? '⚠ 7일 넘게 멈춘 건 ' + stale + '건' : '멈춘 건 없음');
-      if (!stale) w.className = 'cx-ok';
-      b.appendChild(w);
       b.addEventListener('click', function () {
         filter.complexId = filter.complexId === c.id ? '' : c.id;
         $('f-complex').value = filter.complexId;
@@ -190,7 +180,6 @@
   function renderRows(all, now) {
     var rows = all.filter(function (r) {
       if (filter.complexId && r.complexId !== filter.complexId) return false;
-      if (filter.status === '멈춤') return isStale(r, now);
       if (filter.status !== '전체' && r.status !== filter.status) return false;
       return true;
     });
@@ -210,8 +199,7 @@
     }
     rows.forEach(function (r) {
       var c = LH_DATA.findComplex(r.complexId);
-      var stale = isStale(r, now);
-      var tr = el('tr', (fresh[r.id] ? 'is-new' : '') + (stale ? ' stale' : ''));
+      var tr = el('tr', fresh[r.id] ? 'is-new' : '');
       tr.dataset.id = r.id;
       tr.dataset.complex = r.complexId;
 
@@ -251,7 +239,6 @@
         tdA.appendChild(el('span', 'age-done', '처리 끝'));
       } else {
         tdA.appendChild(el('span', null, age === 0 ? '오늘' : age + '일째'));
-        if (stale) tdA.appendChild(el('span', 'age-stale', '⚠ ' + Store.daysSince(r.statusAt, now) + '일 멈춤'));
       }
       tr.appendChild(tdA);
       body.appendChild(tr);
