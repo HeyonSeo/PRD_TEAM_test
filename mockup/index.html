@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>생활 하자 접수 시안</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="intro">
+<div class="privacy-note" id="privacy-note" role="note"><span aria-hidden="true">🔒</span> 가짜 데이터 · 외부로 전송되지 않음 <span class="privacy-more">(이 기기 안에만 저장)</span></div>
+<header class="topbar">
+  <h1>임대주택 생활 하자 접수·취합 시안</h1>
+  <span class="sub">시연용 · 3분</span>
+</header>
+<main class="wrap">
+
+  <!-- 문제 한 줄 -->
+  <section class="card" id="problem">
+    <p class="intro-problem">지금은 단지 12곳 하자 접수가 <em style="white-space:nowrap">엑셀·카톡·메일</em>로 흩어져, 본부 취합에만 <em>주 1일</em>이 듭니다.</p>
+    <p class="muted">이 시안은 현장에서 한 번 등록하면 본부까지 바로 모이는 모습을 보여 드립니다.</p>
+  </section>
+
+  <!-- 시연 순서 3단계 -->
+  <h2>시연 순서</h2>
+  <ol class="steps" id="demo-steps">
+    <li><span class="step-no">1</span><div><strong>현장에서 1분 등록</strong><span class="step-text">관리사무소 과장이 폰으로 사진·동호수·한 줄만 넣고 등록합니다.</span></div></li>
+    <li><span class="step-no">2</span><div><strong>본부에 바로 모임</strong><span class="step-text">본부 화면에 단지 12곳 접수와 함께 같은 양식으로 나타납니다.</span></div></li>
+    <li><span class="step-no">3</span><div><strong>처리 상태 확인</strong><span class="step-text">현장에서 "업체 배정"을 누르면 본부 화면에도 곧바로 바뀝니다.</span></div></li>
+  </ol>
+
+  <div class="open-btns">
+    <a class="btn primary" href="field.html" id="open-field" target="_blank" rel="noopener"><span>현장 화면 열기<small>폰 · 관리사무소 과장</small></span></a>
+    <a class="btn" href="hq.html" id="open-hq" target="_blank" rel="noopener"><span>본부 화면 열기<small>PC · 본부 담당자</small></span></a>
+  </div>
+
+  <!-- 지금 방식 vs 이 도구 -->
+  <section class="card" id="compare">
+    <h2>지금 방식과 무엇이 달라지나</h2>
+    <table class="compare">
+      <thead><tr><th scope="col">항목</th><th scope="col">지금 방식</th><th scope="col">이 도구</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">본부 취합</th><td class="now">주 1일</td><td class="tool">매일 아침 30분 확인</td></tr>
+        <tr><th scope="row">사무실 재입력</th><td class="now">메모지 → 엑셀 다시 입력</td><td class="tool">재입력 없음</td></tr>
+        <tr><th scope="row">사진 옮기기</th><td class="now">개인 카톡으로 PC에 옮김</td><td class="tool">카톡 사진 이동 없음</td></tr>
+        <tr><th scope="row">양식</th><td class="now">단지마다 다른 엑셀</td><td class="tool">12곳 모두 같은 양식</td></tr>
+        <tr><th scope="row">입주민 문의</th><td class="now">"어떻게 됐냐" 전화 하루 3~4통</td><td class="tool">동·호수로 찾아 바로 답함</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 시연 데이터 초기화 -->
+  <section class="card" id="reset-card">
+    <h2>시연 데이터</h2>
+    <p id="seed-count"></p>
+    <div class="reset-row">
+      <button type="button" class="btn" id="reset-btn">시연 데이터 초기화</button>
+      <span class="reset-msg" id="reset-msg" role="status" aria-live="polite"></span>
+    </div>
+    <p class="muted">시연 전에 한 번 누르면 처음 상태(가짜 접수 40건)로 돌아갑니다. 열려 있는 본부 화면도 함께 바뀝니다.</p>
+  </section>
+</main>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+(function () {
+  'use strict';
+  var countEl = document.getElementById('seed-count');
+  var msgEl = document.getElementById('reset-msg');
+  function renderCount() {
+    countEl.textContent = '현재 시연 데이터: 접수 ' + Store.list().length + '건 · 단지 ' + LH_DATA.complexes.length + '곳';
+  }
+  document.getElementById('reset-btn').addEventListener('click', function () {
+    Store.reset();
+    renderCount();
+    msgEl.textContent = '처음 상태로 되돌렸습니다';
+  });
+  Store.onChange(renderCount);
+  renderCount();
+})();
+</script>
+</body>
+</html>
